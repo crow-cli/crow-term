@@ -5,7 +5,7 @@
 <h1 align="center">Martty</h1>
 
 <p align="center">
-  DSH-first Agent TUI，使用与 DSH 同款的 Cordis 插件能力，也可连接其他兼容 ACP agent。
+  DSH-first agent TUI — the same Cordis plugin capabilities as DSH, and it also connects to any other ACP-compatible agent.
 </p>
 
 <p align="center">
