@@ -8,8 +8,8 @@ fn agents_crow(root: &str) -> PathBuf {
     Path::new(root).join(".agents").join("crow")
 }
 
-/// Resolve the crow home: an explicit `CROW_HOME`, then the legacy
-/// `MARTTY_HOME` (so a pre-rebrand install keeps its data), then
+/// Resolve the crow home: an explicit `CROW_HOME` or `CROW_TERM_HOME`, then
+/// the legacy `MARTTY_HOME` (so a pre-rebrand install keeps its data), then
 /// `$DSH_HOME/.agents/crow`, then `~/.agents/crow`.
 pub fn crow_home_from(
     crow_home: Option<&str>,
@@ -29,7 +29,10 @@ pub fn crow_home_from(
 }
 
 pub fn crow_home() -> PathBuf {
-    let crow = std::env::var("CROW_HOME").ok();
+    let crow = std::env::var("CROW_HOME")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .or_else(|| std::env::var("CROW_TERM_HOME").ok());
     let martty = std::env::var("MARTTY_HOME").ok();
     let dsh = std::env::var("DSH_HOME").ok();
     let user = std::env::var("HOME").unwrap_or_else(|_| ".".into());
@@ -93,13 +96,13 @@ pub struct RuntimeConfig {
 
 impl RuntimeConfig {
     /// Environment for the child process, mirroring the SDK's injection.
-    /// Credentials fall back to the local dsh install's store (~/.dsh), so a
-    /// machine with a configured dsh needs no exported DEEPSEEK_API_KEY.
+    /// Credentials fall back to the legacy dsh store (~/.dsh), so a machine
+    /// with a configured legacy dsh needs no exported DEEPSEEK_API_KEY.
     pub fn child_env(&self) -> Vec<(String, String)> {
         let mut env = vec![
-            ("DSH_CORDIS_CONFIG".into(), self.cordis.clone()),
-            ("DSH_SESSION_ROOT".into(), self.session_root.clone()),
-            ("DSH_CWD".into(), self.workspace.clone()),
+            ("CROW_TERM_CORDIS_CONFIG".into(), self.cordis.clone()),
+            ("CROW_TERM_SESSION_ROOT".into(), self.session_root.clone()),
+            ("CROW_TERM_CWD".into(), self.workspace.clone()),
         ];
         if let Some(url) = &self.base_url {
             env.push(("DEEPSEEK_BASE_URL".into(), url.clone()));
@@ -107,7 +110,7 @@ impl RuntimeConfig {
         if let Some(key) = &self.api_key {
             env.push(("DEEPSEEK_API_KEY".into(), key.clone()));
         } else if std::env::var("DEEPSEEK_API_KEY").is_err() {
-            let local = local_dsh();
+            let local = legacy_dsh();
             if let Some(key) = local.api_key {
                 env.push(("DEEPSEEK_API_KEY".into(), key));
             }
@@ -131,14 +134,14 @@ impl RuntimeConfig {
     pub fn has_credentials(&self) -> bool {
         self.api_key.is_some()
             || std::env::var("DEEPSEEK_API_KEY").is_ok()
-            || local_dsh().api_key.is_some()
+            || legacy_dsh().api_key.is_some()
     }
 
     /// Spawn argv for the ACP agent (and Terminal Auth). `demo` falls back
-    /// to `dsh-acp` so `/auth` still has a command to run.
+    /// to `crow-cli acp2` so `/auth` still has a command to run.
     pub fn agent_argv(&self) -> Vec<String> {
         if self.bin.is_empty() || self.bin == "demo" {
-            return vec!["dsh-acp".into()];
+            return vec!["crow-cli".into(), "acp2".into()];
         }
         self.bin.split_whitespace().map(str::to_string).collect()
     }
@@ -149,7 +152,7 @@ impl RuntimeConfig {
             Some("--api-key flag")
         } else if std::env::var("DEEPSEEK_API_KEY").is_ok() {
             Some("environment")
-        } else if local_dsh().api_key.is_some() {
+        } else if legacy_dsh().api_key.is_some() {
             Some("local dsh (~/.dsh)")
         } else {
             None
@@ -157,22 +160,22 @@ impl RuntimeConfig {
     }
 }
 
-/// Facts borrowed from a local `dsh` installation.
+/// Facts borrowed from the legacy `dsh` installation (~/.dsh).
 #[derive(Default, Clone, Debug)]
-pub struct LocalDsh {
+pub struct LegacyDsh {
     pub api_key: Option<String>,
     pub base_url: Option<String>,
     pub provider: Option<String>,
     pub model: Option<String>,
 }
 
-/// Read the local dsh credential store and settings (best effort).
-pub fn local_dsh() -> LocalDsh {
+/// Read the legacy dsh credential store and settings (best effort).
+pub fn legacy_dsh() -> LegacyDsh {
     let Ok(home) = std::env::var("HOME") else {
-        return LocalDsh::default();
+        return LegacyDsh::default();
     };
     let root = Path::new(&home).join(".dsh");
-    let mut out = LocalDsh::default();
+    let mut out = LegacyDsh::default();
     if let Ok(creds) = std::fs::read_to_string(root.join(".credentials.yaml")) {
         out.api_key = yaml_top_level_env(&creds, "DEEPSEEK_API_KEY");
         out.base_url = yaml_top_level_env(&creds, "DEEPSEEK_BASE_URL");
@@ -267,7 +270,7 @@ mod tests {
 
     fn root(name: &str) -> PathBuf {
         let dir =
-            std::env::temp_dir().join(format!("martty-child-env-{}-{name}", std::process::id()));
+            std::env::temp_dir().join(format!("crow-term-child-env-{}-{name}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }

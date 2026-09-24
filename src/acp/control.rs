@@ -431,9 +431,9 @@ async fn run_control(
     let load_session = snapshot.as_ref().map(|snapshot| snapshot.load_session).unwrap_or(load_session);
     let resume_session = snapshot.as_ref().map(|snapshot| snapshot.resume_session).unwrap_or(resume_session);
     let list_session = snapshot.as_ref().map(|snapshot| snapshot.list_session).unwrap_or(list_session);
-    let (requester, retry_auth) = match &cmd {
-        Cmd::NewSession { requester, retry_auth } => (requester.clone(), retry_auth.clone()),
-        _ => (None, None),
+    let requester = match &cmd {
+        Cmd::NewSession { requester, .. } => requester.clone(),
+        _ => None,
     };
     match cmd {
         Cmd::SelectModel {
@@ -713,11 +713,8 @@ async fn run_control(
             let _ = done.send(ControlFinish::Authenticated { method, result });
         }
         Cmd::NewSession { .. } => {
-            let mut request =
+            let request =
                 NewSessionRequest::new(cwd.clone()).mcp_servers(crate::mcp_supply::wire_servers());
-            if let Some(method) = retry_auth {
-                request = request.meta(json!({"marttyAuthMethod": method}).as_object().unwrap().clone());
-            }
             let result = cx
                 .send_request(request)
                 .block_task_setup_deadline()

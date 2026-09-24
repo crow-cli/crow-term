@@ -219,8 +219,7 @@ fn prompt_error_ends_the_ui_turn_before_reporting_the_error() {
     let finish = PromptFinish {
         session_id: "s".into(),
         result: Err(serde_json::from_value(json!({
-            "code": -32603, "message": "boom",
-            "data": { "marttyConnection": { "id": "h3", "authMethods": [] } }
+            "code": -32603, "message": "boom"
         })).unwrap()).into(),
         payload: ParkedPromptKind::Text("hello".into()),
         gen: 1,
@@ -876,7 +875,7 @@ async fn harness_new_action_uses_the_native_new_tab_flow_without_reinitializing(
     assert!(requested, "the painter must own creation of the new tab");
     assert_eq!(initializes.load(Ordering::SeqCst), 1);
     assert_eq!(sessions.load(Ordering::SeqCst), 1);
-    cmd_tx.send(Cmd::NewSession { requester: None, retry_auth: None }).unwrap();
+    cmd_tx.send(Cmd::NewSession { requester: None }).unwrap();
     let deadline = Instant::now() + Duration::from_secs(2);
     let mut rebound = false;
     while Instant::now() < deadline {
@@ -1422,7 +1421,7 @@ async fn elicitation_create_waits_for_the_tui_form_reply() {
     let (bus_tx, bus_rx) = std::sync::mpsc::channel();
     let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
     let client = tokio::spawn(async move { connect(agent, cfg, bus_tx, cmd_rx).await });
-    cmd_tx.send(Cmd::NewSession { requester: None, retry_auth: None }).expect("explicit new session");
+    cmd_tx.send(Cmd::NewSession { requester: None }).expect("explicit new session");
 
     let deadline = Instant::now() + Duration::from_secs(2);
     let mut form_reply = None;
@@ -1527,7 +1526,7 @@ async fn new_session_binds_before_applying_initial_config() {
     let (bus_tx, bus_rx) = std::sync::mpsc::channel();
     let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
     let client = tokio::spawn(async move { connect(agent, cfg, bus_tx, cmd_rx).await });
-    cmd_tx.send(Cmd::NewSession { requester: None, retry_auth: None }).expect("explicit new session");
+    cmd_tx.send(Cmd::NewSession { requester: None }).expect("explicit new session");
 
     let deadline = Instant::now() + Duration::from_secs(2);
     let mut order = Vec::new();
@@ -1610,7 +1609,7 @@ async fn set_config_option_response_updates_client_state_without_a_notification(
     let (bus_tx, bus_rx) = std::sync::mpsc::channel();
     let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
     let client = tokio::spawn(async move { connect(agent, cfg, bus_tx, cmd_rx).await });
-    cmd_tx.send(Cmd::NewSession { requester: None, retry_auth: None }).expect("explicit new session");
+    cmd_tx.send(Cmd::NewSession { requester: None }).expect("explicit new session");
 
     let deadline = Instant::now() + Duration::from_secs(2);
     while Instant::now() < deadline {
@@ -1721,7 +1720,7 @@ async fn effort_selection_uses_the_advertised_thought_level_config_id() {
     let (bus_tx, bus_rx) = std::sync::mpsc::channel();
     let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
     let client = tokio::spawn(async move { connect(agent, cfg, bus_tx, cmd_rx).await });
-    cmd_tx.send(Cmd::NewSession { requester: None, retry_auth: None }).expect("create ACP session");
+    cmd_tx.send(Cmd::NewSession { requester: None }).expect("create ACP session");
 
     let deadline = Instant::now() + Duration::from_secs(2);
     while Instant::now() < deadline {
@@ -1845,7 +1844,7 @@ async fn client_tree_config_set_uses_standard_acp_and_folds_response_only_state(
     let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
     let client = tokio::spawn(async move { connect(agent, cfg, bus_tx, cmd_rx).await });
 
-    cmd_tx.send(Cmd::NewSession { requester: None, retry_auth: None }).expect("create ACP session");
+    cmd_tx.send(Cmd::NewSession { requester: None }).expect("create ACP session");
 
     let result = tokio::time::timeout(Duration::from_secs(2), result_rx.recv())
         .await
@@ -3751,7 +3750,7 @@ async fn sessions_run_concurrent_prompts_on_one_connection() {
     let client = tokio::spawn(async move { connect(agent, cfg, bus_tx, cmd_rx).await });
 
     // Startup binds s1; /new binds s2 and becomes the fallback session.
-    cmd_tx.send(Cmd::NewSession { requester: None, retry_auth: None }).expect("new session");
+    cmd_tx.send(Cmd::NewSession { requester: None }).expect("new session");
     let deadline = Instant::now() + Duration::from_secs(2);
     let mut bound = std::collections::HashSet::new();
     while Instant::now() < deadline && !bound.contains("s2") {
@@ -4161,43 +4160,6 @@ fn stream_owned_new_session_keeps_the_negotiated_connection_facts() {
     assert_eq!(snapshot.server.as_deref(), Some("profile-host"));
     assert!(snapshot.load_session);
     assert!(snapshot.list_session);
-}
-
-#[test]
-fn structured_auth_failure_opens_owning_connection_and_parks_original_prompt() {
-    let finish = PromptFinish {
-        session_id: "claude-session".into(),
-        result: Err(serde_json::from_value(json!({
-            "code": -32603, "message": "Internal error",
-            "data": {
-                "errorKind": "authentication_failed",
-                "details": "403 Insufficient account balance",
-                "marttyConnection": {
-                    "id": "h3", "command": "claude-acp",
-                    "authMethods": [{"id": "h3:login", "name": "Claude login"}]
-                }
-            }
-        })).unwrap()).into(),
-        payload: ParkedPromptKind::Text("original request".into()), gen: 1,
-    };
-    let (tx, rx) = std::sync::mpsc::channel();
-    let mut parked = VecDeque::new();
-    apply_prompt_finish(finish, &mut parked, &tx, &[], None);
-    assert_eq!(parked.len(), 1);
-    assert_eq!(parked[0].session.as_deref(), Some("claude-session"));
-    assert!(matches!(&parked[0].kind, ParkedPromptKind::Text(text) if text == "original request"));
-    assert!(matches!(rx.try_recv(), Ok(AppEvent::Ui(crate::events::UiEvent::TurnEnd { kind, .. })) if kind == "interrupted"));
-    match rx.try_recv().unwrap() {
-        AppEvent::Ctl(CtlEvent::SessionAuth { session_id, snapshot, open }) => {
-            assert_eq!(session_id, "claude-session");
-            assert!(open);
-            assert_eq!(snapshot.status, AuthStatus::NeedsAuth);
-            assert_eq!(snapshot.message.as_deref(), Some("403 Insufficient account balance"));
-            assert_eq!(snapshot.methods[0].id, "h3:login");
-        }
-        _ => panic!("expected owning-session authentication panel"),
-    }
-    assert!(rx.try_recv().is_err());
 }
 
 #[test]

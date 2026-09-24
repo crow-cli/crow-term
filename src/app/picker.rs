@@ -253,8 +253,8 @@ pub fn plugin_provider(module: &str) -> String {
         .to_string()
 }
 
-/// The plugin name shown under its provider: the module name without the
-/// npm scope (`@deepseek-ai/dsh-agent` → `dsh-agent`).
+/// The plugin name shown under its provider: the module name without its
+/// provider scope (`foo/agent` → `agent`).
 pub fn plugin_short_name(module: &str) -> String {
     module
         .split_once('/')

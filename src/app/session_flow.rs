@@ -11,7 +11,7 @@ impl App {
     pub(crate) fn new_session_flow(&mut self, arg: &str, ctl: &Controller) {
         if self.demo {
             let id = if arg.is_empty() {
-                format!("dsh-{}", timestamp())
+                format!("crow-term-{}", timestamp())
             } else {
                 arg.to_string()
             };
@@ -31,13 +31,13 @@ impl App {
             // A local placeholder ids the tab until session/new resolves —
             // the same shape main.rs seeds the startup session with. The
             // real id lands on this tab via `awaiting_binds` at SessionBound.
-            let placeholder = format!("dsh-{}", timestamp());
+            let placeholder = format!("crow-term-{}", timestamp());
             self.prepare_new_session(placeholder.clone(), false, ctl);
             self.awaiting_binds.push_back(AwaitingBind {
                 id: placeholder.clone(),
                 open: true,
             });
-            ctl.send(Cmd::NewSession { requester: Some(placeholder), retry_auth: None });
+            ctl.send(Cmd::NewSession { requester: Some(placeholder) });
             self.show_tip(self.locale.tr("session/new …", "正在创建会话（session/new）…"));
         }
     }

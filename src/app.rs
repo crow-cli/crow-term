@@ -350,7 +350,7 @@ pub struct App {
     /// Last advertised effort catalog for the current model.
     effort_choices: Vec<String>,
     pub tip: Option<(String, Instant)>,
-    /// DSH_TUI_KEYDEBUG=1: echo every delivered key event in the tip row.
+    /// CROW_TERM_KEYDEBUG=1: echo every delivered key event in the tip row.
     key_debug: bool,
     ctrl_c_armed: Option<CtrlCQuitChord>,
     pub session_id: String,
@@ -575,7 +575,7 @@ impl App {
             permission_choices: Vec::new(),
             effort_choices: Vec::new(),
             tip: None,
-            key_debug: std::env::var("DSH_TUI_KEYDEBUG").is_ok_and(|v| v == "1"),
+            key_debug: std::env::var("CROW_TERM_KEYDEBUG").is_ok_and(|v| v == "1"),
             ctrl_c_armed: None,
             session_id,
             parked: Vec::new(),
@@ -634,35 +634,6 @@ pub fn timestamp() -> String {
         .unwrap_or(0);
     let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
     format!("{micros:x}-{seq:x}")
-}
-
-/// Model ids from the host catalog snapshot: either inline JSON in
-/// `DSH_TUI_MODELS` or a JSON file at `DSH_TUI_MODELS_FILE` (written by the
-/// dsh plugin shim and refreshed on llm registry changes). Accepts
-/// `["model-id", ...]` or `[{"id": "...", ...}, ...]`.
-pub fn host_catalog_models() -> Option<Vec<String>> {
-    let raw = match std::env::var("DSH_TUI_MODELS") {
-        Ok(v) if !v.trim().is_empty() => v,
-        _ => {
-            let path = std::env::var("DSH_TUI_MODELS_FILE").ok()?;
-            std::fs::read_to_string(path).ok()?
-        }
-    };
-    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    let arr = value.as_array()?;
-    let mut out = Vec::new();
-    for item in arr {
-        match item {
-            serde_json::Value::String(s) => out.push(s.clone()),
-            serde_json::Value::Object(_) => {
-                if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
-                    out.push(id.to_string());
-                }
-            }
-            _ => {}
-        }
-    }
-    (!out.is_empty()).then_some(out)
 }
 
 /// Slice `s` by display-cell range `[c0, c1)`: a char is included when its

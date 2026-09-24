@@ -151,4 +151,4 @@ pub struct SessionTab {
     pub current: bool,
 }
 
-pub(crate) const AGENT_HISTORY_ID: &str = "__martty_internal__:agent-history";
+pub(crate) const AGENT_HISTORY_ID: &str = "__crow_term_internal__:agent-history";

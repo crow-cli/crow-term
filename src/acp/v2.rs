@@ -1008,7 +1008,7 @@ pub(super) async fn connect(
 
                 let (fwd_tx, mut fwd_rx) = tokio::sync::mpsc::unbounded_channel::<Cmd>();
                 std::thread::Builder::new()
-                    .name("dsh-acp2-cmds".into())
+                    .name("crow-term-acp2-cmds".into())
                     .spawn(move || {
                         while let Ok(cmd) = cmd_rx.recv() {
                             if fwd_tx.send(cmd).is_err() {

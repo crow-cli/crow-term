@@ -1,4 +1,4 @@
-//! DSH Cordis ACP extension contract shared by the native client surfaces.
+//! Cordis ACP extension contract shared by the native client surfaces.
 
 pub const PROTOCOL: u64 = 0;
 

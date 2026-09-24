@@ -631,7 +631,7 @@ pub fn form_from_request(request: &CreateElicitationRequest) -> Result<Elicitati
         .map(String::as_str)
         .collect();
 
-    // DSH exposes “Other” as a standard enum value plus a sibling free-text
+    // The agent exposes “Other” as a standard enum value plus a sibling free-text
     // property. Fold those two schema properties into one terminal control.
     let mut paired_custom = BTreeMap::<String, (String, String)>::new();
     for (name, property) in &mode.requested_schema.properties {

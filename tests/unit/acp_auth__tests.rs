@@ -32,12 +32,12 @@ fn dsh_acp_terminal_login_is_agent_with_terminal_launch() {
 fn terminal_auth_without_command_keeps_agent_args() {
     let methods = parse_auth_methods(
         &dsh_acp_methods(),
-        &["dsh".into(), "--profile".into(), "acp".into()],
+        &["crowterm-agent".into(), "--profile".into(), "acp".into()],
         "/tmp/ws",
         &BTreeMap::new(),
     );
     let launch = methods[0].terminal_launch.as_ref().unwrap();
-    assert_eq!(launch.command, "dsh");
+    assert_eq!(launch.command, "crowterm-agent");
     assert_eq!(launch.args, ["--profile", "acp", "login"]);
 }
 
@@ -156,8 +156,7 @@ fn structured_auth_failure_keeps_the_provider_reason() {
         "code": -32603, "message": "Internal error",
         "data": {
             "errorKind": "authentication_failed",
-            "details": "Failed to authenticate. API Error: 403 Insufficient account balance",
-            "marttyConnection": {"id": "h3", "authMethods": []}
+            "details": "Failed to authenticate. API Error: 403 Insufficient account balance"
         }
     })).unwrap();
     assert!(is_auth_required_error(&err));

@@ -14,7 +14,7 @@ fn attach_tcp_connects_to_loopback_and_authenticates_first() {
     let token = "test-one-time-token";
     let mut child = Command::new(env!("CARGO_BIN_EXE_crow-term"))
         .args(["--attach-tcp", &address.to_string()])
-        .env("DSH_TUI_ATTACH_TOKEN", token)
+        .env("CROW_TERM_ATTACH_TOKEN", token)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

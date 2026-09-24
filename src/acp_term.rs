@@ -213,7 +213,7 @@ impl Drop for TerminalBroker {
 
 fn spawn_reader(rec: Arc<TerminalRec>, mut stream: impl Read + Send + 'static) {
     std::thread::Builder::new()
-        .name("dsh-acp-term-io".into())
+        .name("crow-term-acp-term-io".into())
         .spawn(move || {
             let mut chunk = [0u8; 4096];
             // Carry bytes that may be the start of a truncated multi-byte
@@ -267,7 +267,7 @@ fn spawn_reader(rec: Arc<TerminalRec>, mut stream: impl Read + Send + 'static) {
 
 fn spawn_waiter(rec: Arc<TerminalRec>) {
     std::thread::Builder::new()
-        .name("dsh-acp-term-wait".into())
+        .name("crow-term-acp-term-wait".into())
         .spawn(move || loop {
             let waited = {
                 let mut child = rec.child.lock().unwrap_or_else(|e| e.into_inner());

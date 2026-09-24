@@ -3,25 +3,25 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 project_root=$(CDPATH= cd -- "$script_dir/.." && pwd -P)
-target_input=${DSH_TUI_CARGO_TARGET_DIR:-"$project_root/target"}
-cargo_bin=${DSH_TUI_CARGO_BIN:-cargo}
-max_gib=${DSH_TUI_RUST_CACHE_MAX_GIB:-20}
-min_free_gib=${DSH_TUI_RUST_DISK_MIN_GIB:-10}
-allow_external=${DSH_TUI_CARGO_ALLOW_EXTERNAL_TARGET:-0}
+target_input=${CROW_TERM_CARGO_TARGET_DIR:-"$project_root/target"}
+cargo_bin=${CROW_TERM_CARGO_BIN:-cargo}
+max_gib=${CROW_TERM_RUST_CACHE_MAX_GIB:-20}
+min_free_gib=${CROW_TERM_RUST_DISK_MIN_GIB:-10}
+allow_external=${CROW_TERM_CARGO_ALLOW_EXTERNAL_TARGET:-0}
 # Off by default. `cargo clean` on a shared target dir takes the release binary
 # with it, and a build somebody is about to test is not cache. Over the limit
 # warns; pruning is something you ask for, with `prune` or this flag.
-autoclean=${DSH_TUI_RUST_CACHE_AUTOCLEAN:-0}
+autoclean=${CROW_TERM_RUST_CACHE_AUTOCLEAN:-0}
 
 case "$max_gib" in
   ''|*[!0-9]*)
-    echo "DSH_TUI_RUST_CACHE_MAX_GIB must be a non-negative integer" >&2
+    echo "CROW_TERM_RUST_CACHE_MAX_GIB must be a non-negative integer" >&2
     exit 2
     ;;
 esac
 case "$min_free_gib" in
   ''|*[!0-9]*)
-    echo "DSH_TUI_RUST_DISK_MIN_GIB must be a non-negative integer" >&2
+    echo "CROW_TERM_RUST_DISK_MIN_GIB must be a non-negative integer" >&2
     exit 2
     ;;
 esac
@@ -109,7 +109,7 @@ if [ "$size_kib" -gt "$max_kib" ] \
   if [ "$autoclean" = 1 ]; then
     clean_target
   else
-    echo "cargo-guard: over the cache limit; run 'scripts/cargo-guard.sh prune' to reclaim it (set DSH_TUI_RUST_CACHE_AUTOCLEAN=1 to make that automatic)" >&2
+    echo "cargo-guard: over the cache limit; run 'scripts/cargo-guard.sh prune' to reclaim it (set CROW_TERM_RUST_CACHE_AUTOCLEAN=1 to make that automatic)" >&2
   fi
 fi
 

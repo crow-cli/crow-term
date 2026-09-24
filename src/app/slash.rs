@@ -216,12 +216,10 @@ impl App {
                     }
                     return rows;
                 }
-                let mut ids = host_catalog_models().unwrap_or_else(|| {
-                    MODEL_PRESETS
-                        .iter()
-                        .map(|value| (*value).to_string())
-                        .collect()
-                });
+                let mut ids = MODEL_PRESETS
+                    .iter()
+                    .map(|value| (*value).to_string())
+                    .collect::<Vec<_>>();
                 if !ids.iter().any(|id| id == &current) {
                     ids.insert(0, current);
                 }

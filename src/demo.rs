@@ -61,7 +61,7 @@ impl Driver {
                     "id": "m-inj",
                     "role": "user",
                     "content": [{"type": "text", "text": "AGENTS.md: keep functions small."}],
-                    "source": {"kind": "plugin", "plugin": "dsh-workspace"}
+                    "source": {"kind": "plugin", "plugin": "crow-term-workspace"}
                 }
             }));
         }

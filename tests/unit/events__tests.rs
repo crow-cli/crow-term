@@ -53,127 +53,6 @@ fn subagent_started_and_finished() {
 }
 
 #[test]
-fn metadata_only_subagent_lifecycle_updates_the_agent_dock() {
-    let started = parse_notification(
-        "session/update",
-        &json!({
-            "sessionId": "parent",
-            "update": {
-                "sessionUpdate": "session_info_update",
-                "_meta": {"dsh": {
-                    "event": "subagent/lifecycle",
-                    "subagent": {
-                        "state": "started",
-                        "childSessionId": "child"
-                    }
-                }}
-            }
-        }),
-    );
-    assert_eq!(
-        started,
-        vec![UiEvent::SubagentStarted {
-            parent: "parent".into(),
-            child: "child".into(),
-        }]
-    );
-
-    let failed = parse_notification(
-        "session/update",
-        &json!({
-            "sessionId": "parent",
-            "update": {
-                "sessionUpdate": "session_info_update",
-                "_meta": {"dsh": {
-                    "event": "subagent/lifecycle",
-                    "subagent": {
-                        "state": "finished",
-                        "childSessionId": "child",
-                        "stopReason": "error"
-                    }
-                }}
-            }
-        }),
-    );
-    assert_eq!(
-        failed,
-        vec![UiEvent::SubagentFinished {
-            child: "child".into(),
-            failed: true,
-        }]
-    );
-}
-
-#[test]
-fn standard_acp_subagent_tool_calls_keep_the_request_block_and_lifecycle() {
-    let started = parse_notification(
-        "session/update",
-        &json!({
-            "sessionId": "parent",
-            "update": {
-                "sessionUpdate": "tool_call",
-                "toolCallId": "subagent:run-1",
-                "title": "Start subagent child",
-                "status": "in_progress",
-                "rawInput": {"task": "inspect the renderer"},
-                "_meta": {"dsh": {"subagent": {
-                    "state": "started",
-                    "childSessionId": "child"
-                }}}
-            }
-        }),
-    );
-    assert_eq!(
-        started,
-        vec![
-            UiEvent::ToolCall {
-                session: "parent".into(),
-                call_id: "subagent:run-1".into(),
-                name: "Start subagent child".into(),
-                arguments: r#"{"task":"inspect the renderer"}"#.into(),
-            },
-            UiEvent::SubagentStarted {
-                parent: "parent".into(),
-                child: "child".into(),
-            },
-        ]
-    );
-
-    let finished = parse_notification(
-        "session/update",
-        &json!({
-            "sessionId": "parent",
-            "update": {
-                "sessionUpdate": "tool_call_update",
-                "toolCallId": "subagent:run-1",
-                "status": "completed",
-                "rawOutput": {"summary": "renderer inspected"},
-                "_meta": {"dsh": {"subagent": {
-                    "state": "finished",
-                    "childSessionId": "child"
-                }}}
-            }
-        }),
-    );
-    assert_eq!(
-        finished,
-        vec![
-            UiEvent::ToolResult {
-                session: "parent".into(),
-                call_id: "subagent:run-1".into(),
-                is_error: false,
-                text: r#"{"summary":"renderer inspected"}"#.into(),
-                error: None,
-            },
-            UiEvent::SubagentFinished {
-                child: "child".into(),
-                failed: false,
-            },
-        ]
-    );
-}
-
-#[test]
 fn standard_acp_nonterminal_tool_updates_refresh_the_existing_request() {
     let updates = parse_notification(
         "session/update",
@@ -299,31 +178,6 @@ fn raw_input_wins_over_content_and_a_null_one_is_no_answer() {
         name: "fs".into(),
         arguments: String::new(),
     });
-}
-
-#[test]
-fn nested_acp_updates_are_attributed_to_the_child_session() {
-    let events = parse_notification(
-        "session/update",
-        &json!({
-            "sessionId": "parent",
-            "update": {
-                "sessionUpdate": "agent_message_chunk",
-                "content": {"type": "text", "text": "child says hi"},
-                "_meta": {"dsh": {"subagent": {
-                    "childSessionId": "child",
-                    "parentToolCallId": "subagent:run-1"
-                }}}
-            }
-        }),
-    );
-    assert_eq!(
-        events,
-        vec![UiEvent::TextDelta {
-            session: "child".into(),
-            text: "child says hi".into(),
-        }]
-    );
 }
 
 #[test]
@@ -759,29 +613,6 @@ fn session_update_maps_chunks_tools_and_agent_option() {
         "session/update",
         &json!({
             "sessionId": "s",
-            "update": {
-                "sessionUpdate": "agent_message_chunk",
-                "content": {"type": "text", "text": ""},
-                "messageId": "2:3",
-                "_meta": {
-                    "dsh": {"event": "assistant_message", "model": "deepseek-v4"}
-                }
-            }
-        }),
-    );
-    assert_eq!(
-        ev,
-        vec![UiEvent::AssistantFinal {
-            session: "s".into(),
-            text: String::new(),
-            model: Some("deepseek-v4".into()),
-        }]
-    );
-
-    let ev = parse_notification(
-        "session/update",
-        &json!({
-            "sessionId": "s",
             "sessionUpdate": "current_mode_update",
             "currentModeId": "read-only"
         }),
@@ -941,71 +772,6 @@ fn context_usage_update_without_a_ceiling_is_ignored() {
     );
 
     assert!(events.is_empty(), "used without size is not a meter reading");
-}
-
-#[test]
-fn dsh_injected_context_metadata_restores_the_existing_ui_event() {
-    let events = parse_notification(
-        "session/update",
-        &json!({
-            "sessionId": "s",
-            "update": {
-                "sessionUpdate": "session_info_update",
-                "_meta": {
-                    "dsh": {
-                        "event": "user/message",
-                        "source": "compaction",
-                        "preview": "summary context"
-                    }
-                }
-            }
-        }),
-    );
-
-    assert_eq!(
-        events,
-        vec![UiEvent::UserInjected {
-            session: "s".into(),
-            source: "compaction".into(),
-            preview: "summary context".into(),
-        }]
-    );
-}
-
-#[test]
-fn dsh_resume_usage_metadata_restores_one_token_snapshot() {
-    let events = parse_notification(
-        "session/update",
-        &json!({
-            "sessionId": "s",
-            "update": {
-                "sessionUpdate": "session_info_update",
-                "_meta": {
-                    "dsh": {
-                        "event": "prompt/usage",
-                        "usage": {
-                            "inputTokens": 41,
-                            "outputTokens": 9,
-                            "thoughtTokens": 4,
-                            "cachedReadTokens": 13,
-                            "cachedWriteTokens": 2
-                        }
-                    }
-                }
-            }
-        }),
-    );
-
-    assert_eq!(
-        events,
-        vec![UiEvent::Usage {
-            session: "s".into(),
-            input: 41,
-            output: 9,
-            cached: 15,
-            reasoning: 4,
-        }]
-    );
 }
 
 #[test]
@@ -1278,50 +1044,6 @@ fn non_update_events_pass_through_untouched() {
 }
 
 #[test]
-fn text_chunks_do_not_merge_across_subagents() {
-    let mut events = vec![
-        update_ev(
-            "s1",
-            json!({
-                "sessionUpdate": "agent_message_chunk",
-                "content": { "type": "text", "text": "sub1 " },
-                "_meta": { "dsh": { "subagent": { "childSessionId": "child-1" } } },
-            }),
-        ),
-        update_ev(
-            "s1",
-            json!({
-                "sessionUpdate": "agent_message_chunk",
-                "content": { "type": "text", "text": "sub2 " },
-                "_meta": { "dsh": { "subagent": { "childSessionId": "child-2" } } },
-            }),
-        ),
-    ];
-    coalesce_session_updates(&mut events);
-    assert_eq!(events.len(), 2, "chunks for distinct subagents stay separate");
-}
-
-
-// ---------------------------------------------------------------------------
-// ACP v2 `session/update` discriminators.
-//
-// Every payload below is a verbatim capture from `crow-cli acp2` driving a real
-// turn (`/tmp/wire-v2g.jsonl`) and a real `session/resume` replay
-// (`/tmp/wire-v2resume.jsonl`). v2 renamed and re-shaped enough of the union
-// that a v1-only parser silently rendered a resumed session as an empty pane.
-// ---------------------------------------------------------------------------
-
-/// One `session/update` notification, parsed.
-fn v2_update(session: &str, update: serde_json::Value) -> Vec<UiEvent> {
-    parse_notification("session/update", &json!({ "sessionId": session, "update": update }))
-}
-
-/// v2 replays a transcript as WHOLE messages whose `content` is an array of
-/// blocks, where a live turn streams chunks whose `content` is a single block
-/// object. `agent_message` has to land on `AssistantFinal`, not a delta: with
-/// no open cell it creates the finished one, and after chunks it supersedes the
-/// buffer instead of appending a second copy of the same sentence.
-#[test]
 fn v2_whole_message_updates_repaint_a_replayed_transcript() {
     assert_eq!(
         v2_update(
@@ -1532,6 +1254,10 @@ fn a_v2_tool_call_arrives_as_its_own_first_update() {
         ),
         Vec::<UiEvent>::new()
     );
+}
+
+fn v2_update(session: &str, update: serde_json::Value) -> Vec<UiEvent> {
+    parse_notification("session/update", &json!({ "sessionId": session, "update": update }))
 }
 
 /// `usage_update` is the only token signal crow-cli's v2 agent sends mid-turn,

@@ -153,7 +153,7 @@ async fn check_slow_control(config: bool) {
     let (cmds, commands) = std::sync::mpsc::channel();
     let task = tokio::spawn(connect(agent, cfg, bus, commands));
     wait_event(&events, |event| matches!(event, AppEvent::Ctl(CtlEvent::SessionBound { session_id, .. }) if session_id == "s1")).await;
-    cmds.send(Cmd::NewSession { requester: None, retry_auth: None }).unwrap();
+    cmds.send(Cmd::NewSession { requester: None }).unwrap();
     wait_event(&events, |event| matches!(event, AppEvent::Ctl(CtlEvent::SessionBound { session_id, .. }) if session_id == "s2")).await;
     cmds.send(if config {
         Cmd::SetConfigOption {
@@ -162,7 +162,7 @@ async fn check_slow_control(config: bool) {
             value: "next".into(),
         }
     } else {
-        Cmd::NewSession { requester: None, retry_auth: None }
+        Cmd::NewSession { requester: None }
     })
     .unwrap();
     tokio::time::timeout(Duration::from_secs(3), blocked_rx.recv())

@@ -103,7 +103,7 @@ pub enum UiEvent {
         session: String,
         summary: String,
     },
-    /// `plan/mode` — dsh-plan-mode collaboration state (last one wins).
+    /// `plan/mode` — plan-mode collaboration state (last one wins).
     PlanMode {
         session: String,
         active: bool,
@@ -308,15 +308,7 @@ fn parse_session_event(params: &Value) -> Vec<UiEvent> {
 fn parse_session_update(params: &Value) -> Vec<UiEvent> {
     let root_session = str_field(params, "sessionId");
     let update = params.get("update").unwrap_or(params);
-    let subagent = update
-        .get("_meta")
-        .and_then(|meta| meta.get("dsh"))
-        .and_then(|dsh| dsh.get("subagent"));
-    let session = subagent
-        .and_then(|subagent| subagent.get("childSessionId"))
-        .and_then(Value::as_str)
-        .unwrap_or(&root_session)
-        .to_string();
+    let session = root_session;
     let kind = update
         .get("sessionUpdate")
         .and_then(Value::as_str)
@@ -324,27 +316,11 @@ fn parse_session_update(params: &Value) -> Vec<UiEvent> {
     match kind {
         "agent_message_chunk" => {
             let text = acp_text_content(update.get("content"));
-            let completion = update
-                .get("_meta")
-                .and_then(|meta| meta.get("dsh"))
-                .filter(|dsh| {
-                    dsh.get("event").and_then(Value::as_str) == Some("assistant_message")
-                });
-            let mut events = Vec::new();
-            if !text.is_empty() {
-                events.push(UiEvent::TextDelta {
-                    session: session.clone(),
-                    text,
-                });
+            if text.is_empty() {
+                Vec::new()
+            } else {
+                vec![UiEvent::TextDelta { session, text }]
             }
-            if let Some(dsh) = completion {
-                events.push(UiEvent::AssistantFinal {
-                    session,
-                    text: String::new(),
-                    model: dsh.get("model").and_then(Value::as_str).map(str::to_string),
-                });
-            }
-            events
         }
         "agent_thought_chunk" => {
             let text = acp_text_content(update.get("content"));
@@ -431,49 +407,6 @@ fn parse_session_update(params: &Value) -> Vec<UiEvent> {
                     }];
                 }
             }
-            let dsh = update.get("_meta").and_then(|meta| meta.get("dsh"));
-            if let Some(subagent) = dsh
-                .filter(|dsh| {
-                    dsh.get("event").and_then(Value::as_str) == Some("subagent/lifecycle")
-                })
-                .and_then(|dsh| dsh.get("subagent"))
-            {
-                let child = str_field(subagent, "childSessionId");
-                return match subagent.get("state").and_then(Value::as_str) {
-                    Some("started") => vec![UiEvent::SubagentStarted {
-                        parent: root_session,
-                        child,
-                    }],
-                    Some("finished") => vec![UiEvent::SubagentFinished {
-                        child,
-                        failed: subagent.get("stopReason").and_then(Value::as_str)
-                            != Some("completed"),
-                    }],
-                    _ => Vec::new(),
-                };
-            }
-            if let Some(usage) = dsh
-                .filter(|dsh| dsh.get("event").and_then(Value::as_str) == Some("prompt/usage"))
-                .and_then(|dsh| dsh.get("usage"))
-            {
-                return vec![UiEvent::Usage {
-                    session,
-                    input: u64_field(usage, "inputTokens").unwrap_or(0),
-                    output: u64_field(usage, "outputTokens").unwrap_or(0),
-                    cached: u64_field(usage, "cachedReadTokens").unwrap_or(0)
-                        + u64_field(usage, "cachedWriteTokens").unwrap_or(0),
-                    reasoning: u64_field(usage, "thoughtTokens").unwrap_or(0),
-                }];
-            }
-            if let Some(dsh) =
-                dsh.filter(|dsh| dsh.get("event").and_then(Value::as_str) == Some("user/message"))
-            {
-                return vec![UiEvent::UserInjected {
-                    session,
-                    source: str_field(dsh, "source"),
-                    preview: str_field(dsh, "preview"),
-                }];
-            }
             let title = update
                 .get("title")
                 .and_then(Value::as_str)
@@ -500,36 +433,7 @@ fn parse_session_update(params: &Value) -> Vec<UiEvent> {
             session,
             summary: String::new(),
         }],
-        "tool_call"
-            if subagent
-                .and_then(|subagent| subagent.get("state"))
-                .and_then(Value::as_str)
-                == Some("started") =>
-        {
-            vec![
-                acp_tool_call(root_session.clone(), update),
-                UiEvent::SubagentStarted {
-                    parent: root_session,
-                    child: session,
-                },
-            ]
-        }
         "tool_call" => vec![acp_tool_call(session, update)],
-        "tool_call_update"
-            if subagent
-                .and_then(|subagent| subagent.get("state"))
-                .and_then(Value::as_str)
-                == Some("finished") =>
-        {
-            let mut events = acp_tool_result(root_session, update)
-                .into_iter()
-                .collect::<Vec<_>>();
-            events.push(UiEvent::SubagentFinished {
-                child: session,
-                failed: update.get("status").and_then(Value::as_str) == Some("failed"),
-            });
-            events
-        }
         "tool_call_update" => {
             let status = first_str(update, &["status"]);
             if status == "completed" || status == "failed" {
@@ -1162,8 +1066,8 @@ fn u64_field(v: &Value, key: &str) -> Option<u64> {
 
 /// Coalesce a burst of drained bus events before they reach `App::handle`.
 ///
-/// ACP agents may stream session updates at extreme rates — the dsh-acp
-/// `session/load` replay re-emits every historical delta of a long session
+/// ACP agents may stream session updates at extreme rates — an agent's
+/// `session/load` replay can re-emit every historical delta of a long session
 /// (a 10k-event log became 258k notifications / 1.4 GB, melting the UI loop
 /// for minutes; issue #94 freeze). Deltas are append-only and tool-call
 /// updates are state-replacing, so merging adjacent ones is lossless for the
@@ -1219,11 +1123,6 @@ fn merge_update(prev: &mut Value, new: &Value) -> MergeOutcome {
         return MergeOutcome::Keep;
     };
     if !same_str(prev_update, new_update, "sessionUpdate") {
-        return MergeOutcome::Keep;
-    }
-    let prev_subagent = prev_update.pointer("/_meta/dsh/subagent/childSessionId");
-    let new_subagent = new_update.pointer("/_meta/dsh/subagent/childSessionId");
-    if prev_subagent != new_subagent {
         return MergeOutcome::Keep;
     }
     let kind = new_update

@@ -3,20 +3,20 @@
 //! In ACP the **client owns tool supply**: an agent starts with exactly the servers
 //! the client passes and nothing else. A client that sends none gets an agent that
 //! can only talk — crow-cli logs "runs toolless until a load/new_session provides
-//! them" and will print a hallucinated tool call as prose. Martty is DSH-first and
-//! DSH owns its tools through the Cordis tree, so nothing here was ever wired up;
-//! against a bare ACP agent that silence meant a mute agent.
+//! them" and will print a hallucinated tool call as prose. crow-term hands the
+//! agent exactly what it finds below; against a bare ACP agent that silence
+//! meant a mute agent.
 //!
 //! Servers are read, in precedence order, from:
-//!   1. `mcpServers` in Martty's own `settings.json` (same dict shape as below),
+//!   1. `mcpServers` in crow-term's own `settings.json` (same dict shape as below),
 //!   2. `mcpServers` in crow-cli's config (`~/.agents/crow/config.yaml`) — the
-//!      crow-cli.tui / crow-term passthrough convention, so pointing Martty at
+//!      crow-cli.tui / crow-term passthrough convention, so pointing crow-term at
 //!      `crow-cli acp` supplies crow's tools with zero configuration,
 //!   3. nothing — a toolless agent is a legitimate (if dull) configuration.
 //!
-//! These are passed through untouched: Martty never connects to them itself. The
+//! These are passed through untouched: crow-term never connects to them itself. The
 //! crow config is read tolerantly — crow-cli parses it with PyYAML, which accepts
-//! duplicate keys, so Martty must not reject a document crow is happy with.
+//! duplicate keys, so crow-term must not reject a document crow is happy with.
 //!
 //! ```yaml
 //! mcpServers:
@@ -159,7 +159,7 @@ fn load() -> Vec<McpServer> {
     from_crow_config(&expand_home(CROW_CONFIG)).unwrap_or_default()
 }
 
-/// `mcpServers` out of Martty's settings.json. `None` = key absent (fall through to
+/// `mcpServers` out of crow-term's settings.json. `None` = key absent (fall through to
 /// the crow config); `Some(vec)` = key present, even when it declares no servers.
 fn from_settings_json(path: &Path) -> Option<Vec<McpServer>> {
     let text = std::fs::read_to_string(path).ok()?;
@@ -269,7 +269,7 @@ fn from_crow_config(path: &Path) -> Option<Vec<McpServer>> {
 ///
 /// crow-cli reads this file with PyYAML, which accepts duplicate keys (last one
 /// wins); yaml-rust2 rejects the entire document over them. A config crow itself
-/// is happy with would then leave Martty toolless, so when the whole-document
+/// is happy with would then leave crow-term toolless, so when the whole-document
 /// parse fails we retry against just the `mcpServers` block — the duplicates live
 /// in the model and agent sections, never here.
 fn mcp_servers_node(text: &str) -> Option<yaml_rust2::Yaml> {
@@ -344,7 +344,7 @@ mod tests {
     use serde_json::{json, Value};
 
     fn tmp(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("martty-mcp-supply-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("crow-term-mcp-supply-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         dir.join(name)
     }

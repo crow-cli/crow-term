@@ -143,46 +143,6 @@ fn ctrl_k_no_longer_opens_the_keys_modal_on_an_empty_prompt() {
 }
 
 #[test]
-fn acp_resume_usage_snapshot_reaches_the_footer_once() {
-    let root = tmp_root("acp-usage");
-    let (mut app, ctl) = test_app_with_root(root.to_str().unwrap(), "/w");
-
-    // Multi-session routing (issue #94): updates only reach the footer of
-    // the session they are tagged with, so load the session first.
-    app.resume_acp_session("dsh-loaded", &ctl);
-    app.handle(
-        AppEvent::Rpc {
-            method: "session/update".into(),
-            params: serde_json::json!({
-                "sessionId": "dsh-loaded",
-                "update": {
-                    "sessionUpdate": "session_info_update",
-                    "_meta": {
-                        "dsh": {
-                            "event": "prompt/usage",
-                            "usage": {
-                                "inputTokens": 41,
-                                "outputTokens": 9,
-                                "thoughtTokens": 4,
-                                "cachedReadTokens": 13,
-                                "cachedWriteTokens": 2
-                            }
-                        }
-                    }
-                }
-            }),
-        },
-        &ctl,
-    );
-
-    assert_eq!(app.transcript.usage.input, 41);
-    assert_eq!(app.transcript.usage.output, 9);
-    assert_eq!(app.transcript.usage.cached, 15);
-    assert_eq!(app.transcript.usage.reasoning, 4);
-    let _ = std::fs::remove_dir_all(&root);
-}
-
-#[test]
 fn resume_picker_lists_sessions_and_prefix_resolves() {
     let root = tmp_root("picker");
     write_fixture_session(&root, "dsh-alpha");

@@ -95,7 +95,7 @@ struct Surface {
     client_compositor: bool,
     /// Agent advertised `promptCapabilities.image` (ACP Image blocks allowed).
     prompt_image: bool,
-    /// Agent negotiated the DSH Cordis ACP extension family.
+    /// Agent negotiated the Cordis ACP extension family.
     cordis: bool,
 }
 
@@ -244,7 +244,7 @@ pub fn run_blocking(
         let (relay_tx, relay_rx) = mpsc::channel::<Cmd>();
         let (switch_tx, switch_rx) = mpsc::channel::<(Receiver<Cmd>, AcpEndpoint)>();
         let relay = std::thread::Builder::new()
-            .name("dsh-acp-relay".into())
+            .name("crow-term-acp-relay".into())
             .spawn({
                 let bus = bus.clone();
                 move || relay_commands(cmd_rx, relay_tx, switch_tx, &bus)
@@ -954,14 +954,7 @@ fn apply_prompt_finish(
                 session: finish.session_id.clone(),
                 kind: "interrupted".into(),
             }));
-            if let Some(value) = err.data.as_ref().and_then(|data| data.get("marttyConnection")) {
-                let mut snapshot = session_connection_snapshot(value).auth;
-                snapshot.status = AuthStatus::NeedsAuth;
-                snapshot.message = Some(acp_error_message(&err));
-                let _ = bus.send(AppEvent::Ctl(CtlEvent::SessionAuth { session_id: finish.session_id, snapshot, open: true }));
-            } else {
-                emit_needs_auth_open(bus, methods.to_vec(), selected, Some(acp_error_message(&err)));
-            }
+            emit_needs_auth_open(bus, methods.to_vec(), selected, Some(acp_error_message(&err)));
         }
         TurnOutcome::Failed(err) => {
             let _ = bus.send(AppEvent::Ui(crate::events::UiEvent::TurnEnd {
@@ -1172,15 +1165,7 @@ fn apply_setup(
             .and_then(Value::as_str)
             .or(session_hint);
         surface.session_mut(session).modes.clear();
-        if let (Some(session_id), Some(connection)) = (session, value.pointer("/_meta/marttyConnection")) {
-            surface.session_mut(Some(session_id)).connection = Some(connection.clone());
-            for method in session_connection_snapshot(connection).auth.methods {
-                surface.auth_methods.insert(method.id.clone(), method);
-            }
-            let _ = bus.send(AppEvent::Ctl(CtlEvent::SessionConnection {
-                session_id: session_id.to_string(), connection: session_connection_snapshot(connection),
-            }));
-        } else if let (Some(session_id), Some(connection)) = (session, &surface.initial_connection) {
+        if let (Some(session_id), Some(connection)) = (session, &surface.initial_connection) {
             let _ = bus.send(AppEvent::Ctl(CtlEvent::SessionConnection {
                 session_id: session_id.to_string(), connection: connection.clone(),
             }));
@@ -1361,7 +1346,7 @@ fn resolve_image_uri(path: &str, workspace: &str) -> Option<String> {
 fn spill_image(image: &crate::bus::ImagePart, index: usize) -> Result<String, String> {
     let bytes = crate::pet::decode_base64(&image.data)
         .ok_or_else(|| format!("invalid base64 for {}", image.name))?;
-    let dir = std::env::temp_dir().join("dsh-tui-clip");
+    let dir = std::env::temp_dir().join("crow-term-clip");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let safe: String = image
         .name
@@ -2334,7 +2319,7 @@ where
                 let load_session = init.agent_capabilities.load_session
                     || load_session_supported(&init_value);
                 let resume_session = resume_session_supported(&init_value);
-                // Before sessionCapabilities.list existed, Martty-compatible agents paired
+                // Before sessionCapabilities.list existed, older agents paired
                 // session/list with the top-level loadSession flag. Keep that legacy route.
                 let list_session = list_session_supported(&init_value) || load_session;
                 let _ = bus.send(AppEvent::Ctl(CtlEvent::AgentCaps {
@@ -2419,7 +2404,7 @@ where
 
                 let (fwd_tx, mut fwd_rx) = tokio::sync::mpsc::unbounded_channel::<Cmd>();
                 std::thread::Builder::new()
-                    .name("dsh-acp-cmds".into())
+                    .name("crow-term-acp-cmds".into())
                     .spawn(move || {
                         while let Ok(cmd) = cmd_rx.recv() {
                             if fwd_tx.send(cmd).is_err() {
@@ -3006,26 +2991,7 @@ where
                                         } else {
                                             let _ = bus.send(AppEvent::Ctl(CtlEvent::BindFailed { message: message.clone() }));
                                         }
-                                        if let Some(value) = err.data.as_ref().and_then(|data| data.get("marttyConnection")) {
-                                            let mut connection = session_connection_snapshot(value);
-                                            if is_auth_required_error(&err) {
-                                                connection.auth.status = AuthStatus::NeedsAuth;
-                                                connection.auth.message = Some(message.clone());
-                                                let mut surface = surface.lock().unwrap_or_else(|e| e.into_inner());
-                                                if let Some(id) = &requester { surface.session_mut(Some(id)).connection = Some(value.clone()); }
-                                                for method in &connection.auth.methods {
-                                                    surface.auth_methods.insert(method.id.clone(), method.clone());
-                                                    if let Some(requester) = &requester {
-                                                        surface.failed_auth_setups.entry(method.id.clone()).or_default().push(requester.clone());
-                                                    }
-                                                }
-                                            }
-                                            if let Some(session_id) = requester {
-                                                let snapshot = connection.auth.clone();
-                                                let _ = bus.send(AppEvent::Ctl(CtlEvent::SessionConnection { session_id: session_id.clone(), connection }));
-                                                if is_auth_required_error(&err) { let _ = bus.send(AppEvent::Ctl(CtlEvent::SessionAuth { session_id, snapshot, open: true })); }
-                                            }
-                                        } else if is_auth_required_error(&err) {
+                                        if is_auth_required_error(&err) {
                                             emit_needs_auth_open(&bus, methods.clone(), selected.as_ref(), Some(message));
                                         }
                                     }
@@ -3041,7 +3007,7 @@ where
                                             retries
                                         };
                                         for session_id in retries {
-                                            controls.enqueue(Cmd::NewSession { requester: Some(session_id), retry_auth: Some(method.id.clone()) },
+                                            controls.enqueue(Cmd::NewSession { requester: Some(session_id) },
                                                 &cx, &bus, &surface, &methods, &selected, &cwd,
                                                 load_session, resume_session, list_session, &control_done_tx);
                                         }

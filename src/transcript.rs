@@ -2032,7 +2032,7 @@ pub(crate) fn tool_command(request: &str) -> Option<(&'static str, String)> {
 /// A request that arrived as a fenced block: `(language, code, rest)`.
 ///
 /// crow-cli puts the kernel cell in the tool call's `content` already fenced
-/// for markdown, and repeats it ahead of the output on completion. Martty
+/// for markdown, and repeats it ahead of the output on completion. crow-term
 /// draws its own frame, so the markers are unpacked rather than rendered.
 fn split_leading_fence(text: &str) -> Option<(&str, &str, &str)> {
     let (head, tail) = text.split_once('\n')?;

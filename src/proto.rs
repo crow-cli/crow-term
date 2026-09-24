@@ -89,7 +89,7 @@ impl RuntimeProcess {
         {
             let tail = Arc::clone(&proc.stderr_tail);
             std::thread::Builder::new()
-                .name("dsh-stderr".into())
+                .name("crow-term-stderr".into())
                 .spawn(move || {
                     let reader = BufReader::new(stderr);
                     for line in reader.lines() {
@@ -138,7 +138,7 @@ impl RuntimeProcess {
         let write_turn = Arc::clone(&self.write_turn);
         let child_slot = Arc::clone(&self.child);
         std::thread::Builder::new()
-            .name("dsh-frames".into())
+            .name("crow-term-frames".into())
             .spawn(move || {
                 let reader = BufReader::new(stream);
                 for line in reader.lines() {

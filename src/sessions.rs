@@ -6,8 +6,9 @@
 //! <root>/<workspace-slug>/<session-id>/session.jsonl[.zstd]
 //! ```
 //!
-//! Roots: the configured `session_root` and the local dsh store
-//! `~/.dsh/sessions`. A flat `<root>/<session-id>/session.jsonl` layout is tolerated
+//! Roots: the configured `session_root` and the legacy stores
+//! `~/.crow-term/sessions`, `~/.martty/sessions`, `~/.dsh/sessions`. A flat
+//! `<root>/<session-id>/session.jsonl` layout is tolerated
 //! too. The workspace slug is the absolute path with `/` mapped to `-`,
 //! wrapped in `-…--` (observed: `/Users/x/proj` → `--Users-x-proj--`).
 
@@ -39,11 +40,12 @@ pub fn workspace_slug(workspace: &str) -> String {
 }
 
 /// Candidate session roots, existing ones only: the configured root plus the
-/// homes this client has moved out of (`~/.martty`, then the local dsh store),
-/// so sessions written before a move stay resumable.
+/// homes this client has moved out of (`~/.crow-term`, `~/.martty`, then the
+/// legacy dsh stores), so sessions written before a move stay resumable.
 fn session_roots_from(cfg_root: &str, home: Option<&Path>) -> Vec<PathBuf> {
     let mut roots = vec![PathBuf::from(cfg_root)];
     if let Some(home) = home {
+        roots.push(home.join(".crow-term").join("sessions"));
         roots.push(home.join(".martty").join("sessions"));
         roots.push(home.join(".dsh").join("sessions"));
         roots.push(home.join(".dsh-tui").join("sessions"));

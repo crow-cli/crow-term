@@ -326,8 +326,10 @@ impl App {
         ctl.send(Cmd::FetchCatalog {
             session_id: self.session_id.clone(),
         });
-        let mut items: Vec<PickerItem> = host_catalog_models()
-            .unwrap_or_else(|| MODEL_PRESETS.iter().map(|s| s.to_string()).collect())
+        let mut items: Vec<PickerItem> = MODEL_PRESETS
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>()
             .into_iter()
             .map(|id| PickerItem {
                 id: id.clone(),
@@ -499,7 +501,7 @@ impl App {
     }
 
     /// Resume a durable session: replay its JSONL into the scrollback and
-    /// point the next prompt at the same id — the runtime (or host dsh)
+    /// point the next prompt at the same id — the runtime (or host mux)
     /// keeps appending to the same log.
     pub(crate) fn resume_session(&mut self, id_or_prefix: &str, ctl: &Controller) {
         if self.resume_candidates.is_empty() {

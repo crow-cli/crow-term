@@ -1,7 +1,7 @@
 //! Controller thread: executes UI commands.
 //!
 //! Live sessions delegate to the ACP client in `acp.rs`. The JSON-RPC branch
-//! remains only for the private demo-skin compositor attach.
+//! remains only for the private compositor attach.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
@@ -39,7 +39,7 @@ impl Controller {
             let runtime = Arc::clone(&runtime);
             let interrupted = Arc::clone(&interrupted);
             std::thread::Builder::new()
-                .name("dsh-controller".into())
+                .name("crow-term-controller".into())
                 .spawn(move || {
                     controller_loop(cfg, demo, attached, bus, cmd_rx, runtime, interrupted)
                 })
@@ -67,7 +67,7 @@ impl Controller {
         let runtime: Arc<Mutex<Option<Arc<RuntimeProcess>>>> = Arc::new(Mutex::new(None));
         let interrupted = Arc::new(AtomicBool::new(false));
         std::thread::Builder::new()
-            .name("dsh-controller".into())
+            .name("crow-term-controller".into())
             .spawn(move || crate::acp::run_blocking(cfg, endpoint, bus, cmd_rx))
             .expect("spawn acp controller");
         Controller {

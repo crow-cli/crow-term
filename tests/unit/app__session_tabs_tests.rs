@@ -57,11 +57,10 @@ fn child_chunk(child: &str, text: &str) -> AppEvent {
     AppEvent::Rpc {
         method: "session/update".into(),
         params: serde_json::json!({
-            "sessionId": "dsh-test",
+            "sessionId": child,
             "update": {
                 "sessionUpdate": "agent_message_chunk",
-                "content": { "type": "text", "text": text },
-                "_meta": { "dsh": { "subagent": { "childSessionId": child } } }
+                "content": { "type": "text", "text": text }
             }
         }),
     }
@@ -415,7 +414,7 @@ fn shell_pending_updated_on_session_bound() {
     app.demo = false;
     app.run_slash("new", "", &ctl);
     let placeholder = app.session_id.clone();
-    assert!(placeholder.starts_with("dsh-"));
+    assert!(placeholder.starts_with("crow-term-"));
 
     app.run_local_shell("echo hi".into());
     assert_eq!(app.shell_pending[0].1, placeholder);
@@ -499,7 +498,7 @@ fn session_bound_lands_on_the_tab_that_asked() {
     app.run_slash("new", "", &ctl);
     let placeholder = app.session_id.clone();
     assert!(
-        placeholder.starts_with("dsh-") && placeholder != "dsh-test",
+        placeholder.starts_with("crow-term-") && placeholder != "dsh-test",
         "ACP /new opens a placeholder tab: {placeholder}"
     );
     assert_eq!(app.parked[0].id, "dsh-test", "previous session parked");
@@ -675,7 +674,7 @@ fn prompt_waits_for_session_bind_and_sends_with_the_real_id() {
     while commands.try_recv().is_ok() {} // /new's NewSession etc.
     let placeholder = app.session_id.clone();
     assert!(
-        placeholder.starts_with("dsh-"),
+        placeholder.starts_with("crow-term-"),
         "ACP /new opens a placeholder tab: {placeholder}"
     );
     assert!(!app.session_bound);
@@ -1142,7 +1141,7 @@ fn close_of_an_unbound_tab_discards_its_coming_bind() {
     app.run_slash("new", "", &ctl);
     while commands.try_recv().is_ok() {} // drain /new's NewSession + FetchSkills
     let placeholder = app.session_id.clone();
-    assert!(placeholder.starts_with("dsh-") && !app.session_bound);
+    assert!(placeholder.starts_with("crow-term-") && !app.session_bound);
 
     // Close the placeholder before session/new resolves.
     app.run_slash("close", "", &ctl);

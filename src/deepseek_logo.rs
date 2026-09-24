@@ -1,6 +1,6 @@
 //! Classic DeepSeek Harness welcome mark.
 //!
-//! Geometry and breakpoints intentionally match the pre-Martty renderer.
+//! Geometry and breakpoints intentionally match the pre-rebrand renderer.
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};

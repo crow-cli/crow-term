@@ -487,7 +487,7 @@ pub enum Cmd {
         values: std::collections::BTreeMap<String, String>,
     },
     /// Live ACP `/new` → `session/new` (cwd = workspace).
-    NewSession { requester: Option<String>, retry_auth: Option<String> },
+    NewSession { requester: Option<String> },
     /// Live ACP `/resume` listing (`session/list`). `prefix` is the typed id;
     /// `limit` caps how many entries come back (`/resume n`).
     ListSessions {

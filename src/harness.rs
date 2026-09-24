@@ -1,16 +1,10 @@
-//! The harness Martty's `settings.json` selects.
+//! The harness crow-term's `settings.json` selects.
 //!
-//! The npm host resolves this and hands the result to Rust as `--agent CMD
-//! --agent-arg ARG` (`npm/lib/boot.js` → `painterArgs`). Running the binary
-//! directly skips that layer, and the compiled-in fallback is `dsh-acp` — which
-//! a crow-cli install does not have, so the spawn dies with ENOENT and the TUI
-//! reports `runtime ACP · session unavailable`. Resolving the harness here too
-//! makes the bare binary work with no flags and no environment.
-//!
-//! Mirrors `selectedHarness` / `validateHarness` in `npm/lib/harnesses.js`:
 //! `defaultHarness` names an entry in `harnesses`, falling back to the legacy
 //! `activeHarness` only while `defaultHarness` is absent entirely. An explicit
-//! null default means "use the bundled fallback", so it selects nothing.
+//! null default means "use the compiled-in fallback", so it selects nothing.
+//! Resolving the harness here makes the bare binary work with no flags and no
+//! environment; without a match the caller still has `crow-cli acp2`.
 //!
 //! ```json
 //! {
@@ -58,7 +52,7 @@ impl HarnessEntry {
 
 /// The harness `defaultHarness` selects, or `None` when settings are absent,
 /// unreadable, or name no configured harness. Malformed entries are skipped
-/// rather than fatal: this is a fallback path, and the caller still has `dsh-acp`.
+/// rather than fatal: this is a fallback path, and the caller still has `crow-cli acp2`.
 pub fn selected(path: &Path) -> Option<Harness> {
     let text = std::fs::read_to_string(path).ok()?;
     let settings: serde_json::Value = serde_json::from_str(&text).ok()?;
@@ -193,7 +187,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn tmp(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("martty-harness-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("crow-term-harness-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         dir.join(name)
     }

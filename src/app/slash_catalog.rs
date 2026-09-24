@@ -165,8 +165,7 @@ pub const AGENT_MODES: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// The stock permission presets (id, one-line meaning) — the default table
-/// `@deepseek-ai/dsh-permission-presets` ships. Shift+Tab cycles them;
+/// The stock permission presets (id, one-line meaning). Shift+Tab cycles them;
 /// `/permission <name>` passes any other id through for profiles with a
 /// custom preset table (the host validates and lists what it knows).
 pub const PERMISSION_PRESETS: &[(&str, &str)] = &[
@@ -266,7 +265,7 @@ pub(crate) fn media_type_for(path: &str) -> Option<&'static str> {
 /// to the platform clipboard tool instead.
 #[cfg(target_os = "macos")]
 pub(crate) fn read_clipboard_image() -> Option<(Vec<u8>, &'static str)> {
-    let tmp = std::env::temp_dir().join(format!("dsh-clip-{}.png", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("crow-term-clip-{}.png", std::process::id()));
     let tmp_s = tmp.to_str()?.to_string();
     let script = format!(
         "set out to \"{tmp_s}\"\n\

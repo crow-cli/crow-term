@@ -758,7 +758,7 @@ impl App {
         }
     }
 
-    /// Submit a prompt programmatically (used by DSH_TUI_AUTOPROMPT).
+    /// Submit a prompt programmatically (used by CROW_TERM_AUTOPROMPT).
     pub fn auto_prompt(&mut self, text: &str, ctl: &Controller) {
         self.show_banner = false;
         self.input_sel = None;

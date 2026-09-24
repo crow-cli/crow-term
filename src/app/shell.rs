@@ -105,7 +105,7 @@ impl PersistentShell {
             child,
             stdin,
             stdout: BufReader::new(stdout),
-            marker: format!("MARTTY_SHELL_{}_{}", std::process::id(), timestamp()),
+            marker: format!("CROW_TERM_SHELL_{}_{}", std::process::id(), timestamp()),
         })
     }
 
@@ -116,10 +116,10 @@ impl PersistentShell {
         // otherwise swallow the status/marker lines and hang the marker
         // wait forever.
         writeln!(self.stdin, "eval {} 2>&1 < /dev/null", shell_quote(command))?;
-        writeln!(self.stdin, "__martty_shell_status=$?")?;
+        writeln!(self.stdin, "__crow_term_shell_status=$?")?;
         writeln!(
             self.stdin,
-            "command printf '\\036{}:{id}:%s\\037' \"$__martty_shell_status\" >&9",
+            "command printf '\\036{}:{id}:%s\\037' \"$__crow_term_shell_status\" >&9",
             self.marker
         )?;
         self.stdin.flush()?;

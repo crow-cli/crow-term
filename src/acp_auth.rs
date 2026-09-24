@@ -616,7 +616,7 @@ fn terminal_auth_from_method(
     let agent_command = agent_argv
         .first()
         .cloned()
-        .unwrap_or_else(|| "dsh-acp".into());
+        .unwrap_or_else(|| "crow-cli".into());
     if let Some(block) = terminal_auth_block(method) {
         let command = block
             .get("command")

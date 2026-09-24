@@ -67,16 +67,15 @@ OPTIONS:
       --session-root <dir>  session JSONL root (default: $CROW_HOME/sessions)
       --session-id <id>     resume/continue a durable session id
       --provider <id>       provider route (default: deepseek-official)
-      --model <id>          model id (default: $DSH_MODEL or deepseek-v4-flash)
+      --model <id>          model id (default: $CROW_TERM_MODEL or deepseek-v4-flash)
       --max-tokens <n>      per-request output token cap
       --base-url <url>      sets DEEPSEEK_BASE_URL for a spawned agent
       --api-key <key>       sets DEEPSEEK_API_KEY for a spawned agent
-      --agent <cmd>         ACP agent command (default: dsh-acp or $DSH_TUI_AGENT)
+      --agent <cmd>         ACP agent command (default: crow-cli acp2 or $CROW_TERM_AGENT)
       --agent-arg <arg>     extra argument for --agent (repeatable)
       --theme <dark|light>  DeepSeek Web UI palette (default: persisted, then dark)
       --demo                scripted turns, no runtime / API key needed
-      --demo-skin           ember gallery palette via the plugin runner (implies --demo)
-      --attach-fds          speak ACP over inherited fds 3/4 (Node mux / demo-skin)
+      --attach-fds          speak ACP over inherited fds 3/4 (host attach)
       --attach-tcp <addr>   authenticated loopback TCP (Windows)
       --check-runtime       spawn + initialize the ACP agent, print info, exit
       --dump-frame [WxH]    render one demo frame as text (default 100x34)
@@ -104,7 +103,6 @@ struct Args {
     agent_args: Vec<String>,
     theme: Option<String>,
     demo: bool,
-    demo_skin: bool,
     attach_fds: bool,
     attach_tcp: Option<String>,
     check_runtime: bool,
@@ -129,7 +127,6 @@ fn parse_args_from(args: impl IntoIterator<Item = String>) -> Result<Args> {
         agent_args: Vec::new(),
         theme: None,
         demo: false,
-        demo_skin: false,
         attach_fds: false,
         attach_tcp: None,
         check_runtime: false,
@@ -153,10 +150,6 @@ fn parse_args_from(args: impl IntoIterator<Item = String>) -> Result<Args> {
             "--agent-arg" => args_out.agent_args.push(take("--agent-arg")?),
             "--theme" => args_out.theme = Some(take("--theme")?),
             "--demo" => args_out.demo = true,
-            "--demo-skin" => {
-                args_out.demo_skin = true;
-                args_out.demo = true;
-            }
             "--attach-fds" => args_out.attach_fds = true,
             "--attach-tcp" => args_out.attach_tcp = Some(take("--attach-tcp")?),
             "--check-runtime" => args_out.check_runtime = true,
@@ -196,7 +189,7 @@ fn agent_argv(args: &Args) -> Vec<String> {
         out.extend(args.agent_args.iter().cloned());
         return out;
     }
-    if let Ok(env) = std::env::var("DSH_TUI_AGENT") {
+    if let Ok(env) = std::env::var("CROW_TERM_AGENT") {
         let tokens: Vec<String> = env.split_whitespace().map(str::to_string).collect();
         if !tokens.is_empty() {
             return tokens;
@@ -211,11 +204,11 @@ fn agent_argv(args: &Args) -> Vec<String> {
     if let Some(harness) = harness::selected(&runtime::settings_path(&session_root)) {
         return harness.argv();
     }
-    vec!["dsh-acp".into()]
+    vec!["crow-cli".into(), "acp2".into()]
 }
 
 fn build_config(args: &Args) -> Result<RuntimeConfig> {
-    let local = runtime::local_dsh();
+    let local = runtime::legacy_dsh();
     let workspace = match &args.workspace {
         Some(w) => std::fs::canonicalize(w)
             .with_context(|| format!("workspace not found: {w}"))?
@@ -249,7 +242,7 @@ fn build_config(args: &Args) -> Result<RuntimeConfig> {
         cordis,
         workspace,
         session_root,
-        // Route defaults borrow the local dsh install's configured default
+        // Route defaults borrow the legacy dsh install's configured default
         // (settings.yaml agent-default-model) before falling back to stock.
         provider: args
             .provider
@@ -259,7 +252,7 @@ fn build_config(args: &Args) -> Result<RuntimeConfig> {
         model: args
             .model
             .clone()
-            .or_else(|| std::env::var("DSH_MODEL").ok())
+            .or_else(|| std::env::var("CROW_TERM_MODEL").ok().or_else(|| std::env::var("DSH_MODEL").ok()))
             .or(local.model)
             .unwrap_or_else(|| "deepseek-v4-flash".into()),
         max_tokens: args.max_tokens,
@@ -375,21 +368,17 @@ fn main() -> Result<()> {
         return dump_frame(&args, w, h);
     }
 
-    if args.demo_skin && !args.attach_fds && args.attach_tcp.is_none() {
-        return reexec_demo_skin();
-    }
-
     let cfg = build_config(&args)?;
     let session_id = args
         .session_id
         .clone()
-        .unwrap_or_else(|| format!("dsh-{}", app::timestamp()));
+        .unwrap_or_else(|| format!("crow-term-{}", app::timestamp()));
 
     let (bus_tx, bus_rx) = mpsc::channel::<AppEvent>();
     install_termination_handler(bus_tx.clone())?;
 
-    // `--demo` / `--demo-skin`: JSON-RPC attach for palette + scripted turns.
-    // Live: official ACP on those fds (Node mux) or a spawned agent.
+    // `--demo`: JSON-RPC attach for palette + scripted turns. Live: official
+    // ACP on those fds (host attach) or a spawned agent.
     let controller = if args.demo {
         let attached_rt = if args.attach_fds {
             #[cfg(unix)]
@@ -516,7 +505,7 @@ fn main() -> Result<()> {
     let backend = ratatui::backend::CrosstermBackend::new(std::io::stdout());
     let mut terminal = ratatui::Terminal::new(backend)?;
 
-    if let Ok(auto) = std::env::var("DSH_TUI_AUTOPROMPT") {
+    if let Ok(auto) = std::env::var("CROW_TERM_AUTOPROMPT") {
         if !auto.trim().is_empty() {
             app.auto_prompt(&auto, &controller);
         }
@@ -805,12 +794,12 @@ fn tcp_attach_stream(address: &str) -> Result<std::net::TcpStream> {
     if !address.ip().is_loopback() {
         bail!("--attach-tcp requires a loopback address");
     }
-    let token = std::env::var("DSH_TUI_ATTACH_TOKEN")
-        .context("--attach-tcp requires DSH_TUI_ATTACH_TOKEN")?;
+    let token = std::env::var("CROW_TERM_ATTACH_TOKEN")
+        .context("--attach-tcp requires CROW_TERM_ATTACH_TOKEN")?;
     if token.is_empty() {
-        bail!("DSH_TUI_ATTACH_TOKEN must not be empty");
+        bail!("CROW_TERM_ATTACH_TOKEN must not be empty");
     }
-    std::env::remove_var("DSH_TUI_ATTACH_TOKEN");
+    std::env::remove_var("CROW_TERM_ATTACH_TOKEN");
     let mut writer = TcpStream::connect_timeout(&address, Duration::from_secs(10))
         .with_context(|| format!("connect plugin transport at {address}"))?;
     writeln!(writer, "{token}")?;
@@ -828,7 +817,7 @@ fn dump_frame(args: &Args, w: u16, h: u16) -> Result<()> {
     let cfg = build_config(&args_demo)?;
     let (bus_tx, bus_rx) = mpsc::channel::<AppEvent>();
     let theme = args.theme.as_deref().map(ui::theme_for);
-    let mut app = App::new(theme, cfg, "dsh-demo".into(), true, false, bus_tx.clone());
+    let mut app = App::new(theme, cfg, "crow-term-demo".into(), true, false, bus_tx.clone());
     app.git_branch = ui::head_branch(&app.cfg.workspace);
 
     // Run one scripted demo turn synchronously through the real pipeline.
@@ -836,7 +825,7 @@ fn dump_frame(args: &Args, w: u16, h: u16) -> Result<()> {
         .push_user("查看这个仓库并修复失败的测试".into(), false);
     app.show_banner = false; // dump simulates the post-submit look: no whale
     app.state = RunState::Starting;
-    demo::run_demo_turn(bus_tx, "dsh-demo".into(), "inspect the repo".into());
+    demo::run_demo_turn(bus_tx, "crow-term-demo".into(), "inspect the repo".into());
     let deadline = std::time::Instant::now() + Duration::from_secs(8);
     loop {
         match bus_rx.recv_timeout(Duration::from_millis(200)) {
@@ -869,64 +858,6 @@ fn dump_frame(args: &Args, w: u16, h: u16) -> Result<()> {
     app.state = RunState::Idle;
     print!("{}", ui::dump_frame(&mut app, w, h));
     Ok(())
-}
-
-fn argv_without_demo_skin(args: impl IntoIterator<Item = String>) -> Vec<String> {
-    args.into_iter().filter(|a| a != "--demo-skin").collect()
-}
-
-fn demo_skin_script_candidates(
-    manifest_dir: &std::path::Path,
-    exe: &std::path::Path,
-) -> Vec<std::path::PathBuf> {
-    let mut out = vec![manifest_dir.join("npm/lib/demo-skin.js")];
-    if let Some(dir) = exe.parent() {
-        out.push(dir.join("../../lib/demo-skin.js"));
-        out.push(dir.join("../lib/demo-skin.js"));
-    }
-    out
-}
-
-fn find_demo_skin_script(exe: &std::path::Path) -> Option<std::path::PathBuf> {
-    demo_skin_script_candidates(std::path::Path::new(env!("CARGO_MANIFEST_DIR")), exe)
-        .into_iter()
-        .find(|p| p.is_file())
-}
-
-/// `--demo-skin` without an attach transport: hand off to the Node plugin
-/// runner so the palette arrives over `_dsh/cordis/tui/theme/update`. Missing node/script
-/// fails loud — never silently paint the built-in default pack.
-fn reexec_demo_skin() -> Result<()> {
-    let exe = std::env::current_exe()
-        .context("crow-term --demo-skin: cannot resolve the current executable (MARTTY_BIN)")?;
-    let looked =
-        demo_skin_script_candidates(std::path::Path::new(env!("CARGO_MANIFEST_DIR")), &exe);
-    let script = find_demo_skin_script(&exe).ok_or_else(|| {
-        anyhow::anyhow!(
-            "crow-term --demo-skin requires npm/lib/demo-skin.js (looked in {}); refusing to fall back to the default palette",
-            looked
-                .iter()
-                .map(|p| p.display().to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-    })?;
-    let child_args = argv_without_demo_skin(std::env::args().skip(1));
-    let status = std::process::Command::new("node")
-        .arg(&script)
-        .args(&child_args)
-        .env("MARTTY_BIN", &exe)
-        .stdin(std::process::Stdio::inherit())
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
-        .status()
-        .with_context(|| {
-            format!(
-                "crow-term --demo-skin failed to spawn node {} (is node on PATH?); refusing to fall back to the default palette",
-                script.display()
-            )
-        })?;
-    std::process::exit(status.code().unwrap_or(1));
 }
 
 #[cfg(test)]

@@ -20,7 +20,7 @@ fn help_names_the_current_expand_shortcut() {
 }
 
 #[test]
-fn help_names_demo_skin() {
+fn help_omits_the_removed_demo_skin_flag() {
     let output = Command::new(env!("CARGO_BIN_EXE_crow-term"))
         .arg("--help")
         .output()
@@ -29,8 +29,8 @@ fn help_names_demo_skin() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("help is utf-8");
     assert!(
-        stdout.contains("--demo-skin"),
-        "help must advertise --demo-skin:\n{stdout}"
+        !stdout.contains("--demo-skin"),
+        "the node skin runner is gone; help must not offer it:\n{stdout}"
     );
     assert!(
         stdout.contains("--agent"),
