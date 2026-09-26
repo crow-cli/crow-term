@@ -1,418 +1,133 @@
-<p align="center">
-  <img src="assets/martty-lockup.svg" width="650" alt="Martty terminal lockup" />
-</p>
+# crow-term
 
-<h1 align="center">Martty</h1>
+A terminal, and the things that live in it.
 
-<p align="center">
-  DSH-first agent TUI — the same Cordis plugin capabilities as DSH, and it also connects to any other ACP-compatible agent.
-</p>
+This README is honest about the gap between the two: **what we are building
+toward** is a monorepo of Rust apps that share one terminal, one agent protocol
+and one theme. **What exists today** is one of those apps — an ACP client TUI —
+plus a set of sibling checkouts that are not yet part of anything. Neither half
+is finished, and the parts that are finished still carry branding from the
+project this one was forked out of.
 
-<p align="center">
-  <a href="README.md">中文</a> · <a href="README.en.md">English</a>
-</p>
+---
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/martty"><img src="https://img.shields.io/npm/v/martty?logo=npm&color=cb3837" alt="npm version" /></a>
-  <a href="https://www.npmjs.com/package/martty"><img src="https://img.shields.io/npm/dm/martty" alt="npm downloads" /></a>
-  <a href="https://github.com/openma-ai/Martty/actions/workflows/package-npm.yml"><img src="https://github.com/openma-ai/Martty/actions/workflows/package-npm.yml/badge.svg" alt="CI" /></a>
-  <img src="https://img.shields.io/node/v/martty" alt="Node.js 18+" />
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT" /></a>
-</p>
+## What we are building toward
 
-## 快速开始
+One terminal emulator, and a set of first-party apps that ship inside it,
+preinstalled and preconfigured. You do not assemble this stack; you get it, and
+you get **one theme selector** that drives all of it.
 
-> 通过 `npm install` 安装时，本机需已安装 [Node.js](https://nodejs.org/)，且可能需要 [pnpm](https://pnpm.io/)。
->
-> AI agent / 自动化安装步骤见 [Agent 安装说明](docs/agent-install.md)。
+| name | what it is | where it comes from | license |
+|---|---|---|---|
+| **crow-term** | the terminal emulator itself — the base executable | fork of [rio](https://github.com/raphamorim/rio): `frontends/rioterm` for native, the wasm frontend for the browser | MIT |
+| **crow** | the ACP client — talk to a coding agent inside the terminal | what the `crow-term` crate in this repo is *today*, renamed | MIT |
+| **murdr** | a crow agent orchestrator: panes that keep running when you detach, per-pane agent state, several machines in one window | fork of [herdr](https://herdr.dev), rebranded and rebuilt around ACP instead of herdr's own socket API | Apache-2.0 |
+| **starship** | the shell prompt | [starship/starship](https://github.com/starship/starship) | ISC |
+| **fresh** | the text editor | [sinelaw/fresh](https://github.com/sinelaw/fresh) | GPL-3.0-or-later |
+| **emeraldian** | notes — an Obsidian-shaped TUI over a plain folder of Markdown | [emeraldian](https://github.com/iamrohithrnair/emeraldian), on its `acp` branch | GPL-3.0-or-later |
 
-全局安装后直接启动：
+The license column is not decoration. This crate is MIT; `fresh` and
+`emeraldian` are GPL-3.0-or-later. Vendoring either into a shared workspace, or
+linking them into one binary, changes what the result can be licensed as.
+Shipping them as **separate executables** that the terminal launches does not.
+That is an argument for keeping the monorepo a repo of independent binaries
+rather than one linked product, and it has not been decided either.
 
-```sh
-npm install --global martty
-martty
+Structurally this becomes a **monorepo with several crates that each compile to
+an app**, rather than one binary crate. Whether a given component is forked into
+the tree or consumed as a library dependency is decided per component and is
+**not decided yet** — rio and herdr are the two we expect to fork, starship and
+fresh are the two we expect to depend on, and emeraldian is genuinely open.
+
+The load-bearing idea is the theme. Every one of those apps has its own theme
+system today (rio's config, starship's palettes, fresh's themes, emeraldian's
+`emeraldian-theme`, this repo's `tui-palette.v0`). One selector has to reach all
+of them, which means either a shared palette format every app can read or a
+config writer that speaks each app's dialect. That work has not started.
+
+**None of the above is built.** It is the direction, written down so the
+decisions below have something to be decided against.
+
+---
+
+## What exists today
+
+### This repo: `crow-term` v0.2.39
+
+A pure-Rust binary crate. No Node, no npm, no plugin host — the JavaScript layer
+this project was forked out of is deleted, not dormant, and the git history is
+full of it.
+
+```
+cargo build --release -j 6      # -> target/release/crow-term
+cargo test --locked             # the only gate
 ```
 
-不想安装到全局，可以直接运行：
+What it does: spawns an [ACP](https://agentclientprotocol.com/) agent as a child
+process over stdio and renders the conversation — streaming text, reasoning,
+tool calls, plans, token usage, images, persisted sessions. The protocol is
+**negotiated, never declared**: one union `initialize` goes out over the live
+channel and the response decides whether `src/acp.rs` (v1) or `src/acp/v2.rs`
+handles the connection. A harness is an argv, not a config schema.
 
-```sh
-npx --yes martty
-```
+- `agent-client-protocol` 2.0.0, behind `unstable_protocol_v2`
+- `ratatui` 0.30.2 + `crossterm` 0.29, `tui-markdown`, `syntect`,
+  `ratatui-textarea`, `ratatui-explorer`, `tui-tree-widget`
+- settings at `~/.agents/crow/settings.json` — patched, never rewritten;
+  an unparseable file is quarantined rather than replaced
+- 24 slash commands, catalogued in `src/app/slash_catalog.rs`
+- 8 palettes in `docs/fixtures/` against `docs/tui-palette.v0.schema.json`:
+  ayu, catppuccin, everforest, iceberg, kanagawa, one, solarized, tomorrow
+- `tests/startup_session_e2e.rs` drives the **shipped binary** on a real PTY
+  against a stub ACP agent — that, not a mock, is how behaviour gets proven
 
-Martty 内置 ACP 连接层，默认启动并连接 DSH。已有 DSH 环境时，也可以把 Martty
-安装到独立 profile，交给 DSH 管理插件和升级：
+Read [`AGENTS.md`](AGENTS.md) before changing anything. It is the list of
+constraints that have already bitten an agent — protocol negotiation, the
+single connection, the tokio runtime rule, the test layout.
 
-```sh
-npm install --global @deepseek-ai/dsh
-dsh plugin --profile martty add martty@latest
-dsh --profile martty
-```
+### The sibling checkouts
 
-只想看界面，可以运行：
+These live next to this repo under `../` and are **not** wired into it. No
+workspace, no shared build, no path dependencies.
 
-```sh
-martty --demo
-martty --demo-skin
-```
+| directory | remote | branch | state |
+|---|---|---|---|
+| `../rio` | `crow-cli/rio` | `main` | forked, full workspace: sugarloaf, corcovado, teletypewriter, rio-vt, `frontends/rioterm`, `frontends/wasm` |
+| `../herdr` | `odellus/herdr` | `master` | forked; upstream is v0.9.x, Apache-2.0 |
+| `../emeraldian` | `odellus/emeraldian` | `acp` | forked on an `acp` branch; workspace crates `acp`, `emeraldian-core`, `emeraldian-theme`, `emeraldian-agent`, `emeraldian` |
+| `../fresh` | `sinelaw/fresh` | `master` | upstream clone, not forked |
+| `../starship` | `starship/starship` | `main` | upstream clone, not forked |
+| `../crow-cli` | `crow-cli/crow-cli` | `main` | the ACP *agent* crow-term talks to; Python, on PyPI |
 
-## Agent UI
+### What is still vestigial here
 
-Martty 在终端中呈现完整的 agent 工作过程，包括流式回复、推理、工具调用、
-subagent、Plan、token 用量和持久化会话。图片可以从文件或剪贴板加入 prompt；
-工具输出、Markdown、代码块和图片预览都使用终端原生交互。
+Listed so nobody mistakes it for intent:
 
-回合运行时可以继续排队消息，也可以立即 steer 当前 agent。会话通过 `/new`、
-`/resume` 和 `--session-id` 管理，workspace、模型、权限和界面选择会随会话恢复。
+- `src/theme.rs` is a 1:1 map of DeepSeek's web design tokens, and
+  `src/deepseek_logo.rs` and `assets/martty-lockup.svg` are still in the tree
+- `/plugins`, `/cordis-plugins`, `/ui` and `/liang` are live slash commands
+  pointing at a Cordis plugin host that no longer exists; `src/cordis.rs` and
+  `src/slots.rs` are the same story
+- `src/locale.rs` requires a Chinese description for every builtin command, so
+  the command surface is bilingual by construction
+- `docs/composer-input.md` is accurate and still in Chinese
 
-<p align="center">
-  <img src="assets/screenshots/agent-turn.png" width="720"
-       alt="Martty 中的 Markdown 回复、工具调用和运行状态" />
-</p>
+---
 
-常用操作：
+## Docs
 
-| 按键 / 命令 | 行为 |
+| | |
 |---|---|
-| `enter` | 发送消息；composer 为空且 Queue 非空时立即发送队首 |
-| `ctrl+enter` | 立即 steer 当前 agent（macOS 也可用 `⌘⏎`） |
-| `alt+↑` | 选择任意 Queue 条目；`↑/↓` 移动，`enter` 编辑，`ctrl+d` 删除 |
-| `↓` · `←/→` · `enter` | 空输入时展开 Agent 导航、移动并打开；`esc` 折叠 |
-| `esc` | 中断当前回合并保留草稿 |
-| `/` | 打开命令与参数候选 |
-| `/model` · `/agent` | 选择模型和 Agent Preset |
-| `/harness [id]` | 在 TUI 内切换 Harness 并启动新的空会话 |
-| `/permission` · `shift+tab` | 选择或轮换权限模式 |
-| `/image <path>` · `/clip` | 添加本地图片或剪贴板图片 |
-| `!cmd` | 在 workspace 的会话级本地 shell 中执行命令 |
-| `/help` · `/keys` | 查看命令与快捷键 |
-| `/vim` | 切换 vim 模态编辑（默认关闭；normal 模式 h/j/k/l 移动、dd 删行、i 插入） |
-
-### 文本编辑（composer 输入框）
-
-| 按键 | 行为 |
-|---|---|
-| `←` / `→` | 移动光标（`ctrl+b` / `ctrl+f`） |
-| `↑` / `↓` | 按屏幕行移动（多行草稿） |
-| `home` / `end` | 行首 / 行尾（`ctrl+a` / `ctrl+e`；macOS `⌘←/→`） |
-| `alt+←` / `alt+→` | 按词移动（Linux/Win `ctrl+←/→`） |
-| `⌫` / `delete` | 删除前 / 后一个字符 |
-| `ctrl+w` | 删除光标前一个词 |
-| `ctrl+k` / `ctrl+u` | 删到行尾 / 行首（macOS `⌘⌫` 删到行首） |
-| `ctrl+shift+k` | 删除整行 |
-| `ctrl+z` / `ctrl+shift+z` | 撤销 / 重做（macOS `⌘z` / `⌘⇧z`） |
-| `ctrl+y` | 粘贴最近删除的文本（yank） |
-| `shift+←/→/↑/↓` · `shift+home/end` | 扩展选区 |
-| `ctrl+shift+c` / `ctrl+x` | 复制 / 剪切选区（键盘与鼠标拖选均适用） |
-| `shift+enter` / `ctrl+j` | 草稿内换行 |
-
-完整的编辑快捷键、鼠标操作（点击定位、拖选复制）与开发者集成说明，见
-[Composer 输入控件文档](docs/composer-input.md)。
-
-## 插件系统
-
-Martty 的界面不是一组写死的开关。UI、主题、Slot、命令、Overlay 和 Session 视图
-都由 Cordis Plugin 组合，并随 Plugin 生命周期一起加载和卸载。这套插件系统也是
-Martty 的自进化路径：Agent 可以读取当前能力，创建新的界面 Plugin，并在运行中继续
-观察和修改。
-
-一个 Cordis Plugin Package 可以包含两个部分：
-
-```text
-Cordis Plugin Package
-├── code.host       # 可选，运行在 Host Cordis tree
-└── code.client     # 可选，运行在 Martty Client Cordis tree
-```
-
-只包含 `code.host` 是 Host-only，只包含 `code.client` 是 Client-only，两者都有就是
-双向 Plugin。双向 Plugin 仍是一个 Plugin run；Client half 可以通过
-`host.call(method, args)` 调用同一 run 的 Host half。
-
-### 四个 Plugin 视图
-
-| 视图 | 显示什么 |
-|---|---|
-| `/ui` | UI Plugin 列表，例如 Martty 与 DeepSeek；选择后切换整套 UI 组合 |
-| `/theme` | Theme Plugin 列表；选择后切换配色及该 Plugin 的其他能力 |
-| `/plugins` | 当前已经加载的静态 Plugin，只读 |
-| `/cordis-plugins` | Cordis 模式刚创建的临时 Plugin；可随 run 停止、替换或回收 |
-
-`/ui` 和 `/theme` 是视图，不是 Plugin 类型。列表中的 Plugin 可以是 Client-only，
-也可以是同时带有 Host half 与 Client half 的双向 Plugin。
-
-Theme Plugin 与明暗模式彼此独立。使用 `/theme` 选择 Theme Plugin，使用
-`/theme toggle` 或 `ctrl+t` 切换当前 Theme Plugin 的 dark/light 变体。输入
-`/theme ` 时，上拉候选会把 `toggle` 与 Theme Plugin 分区显示。在 `/theme`
-对话框与 `/theme ` 上拉候选里移动高亮（↑/↓、翻页键、滚轮）会**即时预览**
-高亮所在的主题包，方便逐套对比——此时只是预览，并未确定；按 **Enter** 才真正
-切换 Theme Plugin 并持久化；按 Esc 或把高亮移开则会回到已经确定的主题。
-
-### 六个 Slot
-
-带有 Client half 的 Plugin 可以通过 `tuiSlots.register` 向六个位置提供界面内容：
-
-| Slot | 类型 | 位置与用途 |
-|---|---|---|
-| `welcome.hero` | single · root | 欢迎页品牌区 |
-| `welcome.info` | single · root | 欢迎页版本、模型、workspace 与 session 信息 |
-| `chrome.right` | list · root | 主界面右栏，适合监控面板和持续状态 |
-| `conversation.input.dock` | list · session | 输入框上方，适合 Plan、任务和 Goal 摘要 |
-| `conversation.navigation.dock` | list · session | composer 内部、输入区与模式行之间，适合 Agent、branch 与 session 导航 |
-| `conversation.composer.dock` | list · session | composer 外层底部，适合 token、耗时等紧凑统计 |
-
-节点类型、更新和卸载生命周期见 [Plugin API：`tuiSlots`](docs/plugins.md#当前可调用-tuislots)，
-字段定义见 [`tui-node.v0.schema.json`](docs/tui-node.v0.schema.json)。
-
-### 创建 Plugin
-
-Creator 可以检查当前 Host 与 Client 暴露的 Service、Slot 和 Schema，再生成
-`code.host`、`code.client` 或双向 Package。Client-only Artifact 可以保存到
-`$MARTTY_HOME/plugins/<artifact-id>/plugin.json`；包含 `code.host` 的 Package
-由当前 Harness 管理。
-
-自进化过程是一个可观察的闭环：
-
-```text
-inspect → generate → run → observe → update / rollback → save
-```
-
-Creator 先读取真实 API，再运行生成的 Plugin。装载错误、Schema 错误和绘制结果都能
-反馈到下一次修改；满意后再保存，不满意可以更新、停止或回滚。Plugin 只能使用公开的
-Service 和语义节点，不能直接操作 TTY、raw mode 或终端坐标。
-
-### 从临时 Plugin 升级为常驻 Plugin
-
-Cordis 模式里的 Plugin 默认只属于当前进程。验证完成后，可以把它升级为重启后仍会
-加载的常驻 Plugin：
-
-```text
-临时 Plugin → 验证当前 Package → 保存或打包 → 启动时加载
-```
-
-可用 `/liang on`、`/liang off` 显式控制。缺省关闭，`/liang on` 召唤。
-
-Client-only Plugin 可以直接走短路径：
-
-```text
-cordis_define → cordis_run → tui_plugin_save → $MARTTY_HOME/plugins
-```
-
-Martty 会在下次启动时重新发现这个 Artifact。包含 `code.host` 的 Host-only 或双向
-Plugin 不能写进 `.martty`；Creator 先用 `cordis_inspect_self` 读取已经验证的 Package
-源码，再把它整理成普通 Cordis npm Package 或本地 Package，安装进 profile：
-
-```sh
-dsh plugin --profile martty add <package-or-path>
-```
-
-安装后的 Package 随 profile 启动，由 Harness 管理 Host half，并把 Client entry 交给
-Martty。当前没有把任意动态 Package 一键转换为静态 Package 的 `promote` 命令；升级
-会显式经过保存或打包，避免把一次临时 run 自动写入长期配置。
-
-安装第三方 Package：
-
-```sh
-dsh plugin --profile martty add <package-or-path>
-```
-
-完整的 API、生命周期与示例见 [插件开发文档](docs/plugins.md)。
-
-## 连接其他 ACP agent
-
-Martty 的 ACP client 是内置的。默认配置连接 DSH；连接其他 ACP server 时，只需
-修改 agent 或 stream 配置，不需要替换 Martty 的 ACP 层。
-
-Standalone 模式可以指定启动命令：
-
-```sh
-DSH_TUI_AGENT="<acp-command> [args...]" martty
-```
-
-### Harness CLI 快速上手
-
-在系统终端先浏览目录，再复制目标条目的 ID。下方 `<id>` 必须替换为 `find` 输出的 ID，
-不是显示名称，也不要原样输入尖括号。
-
-```sh
-martty harness find         # 浏览 Registry 与本地候选
-martty harness add <id>     # 安装／保存配置
-martty harness use <id>     # 设置下次启动的默认 Harness
-martty                     # 在当前工作目录启动 TUI
-```
-
-`add` 和 `use` 不会切换已经运行的 TUI；需要切换当前会话时，在 TUI 中使用 `/harness`。
-查看、刷新和移除配置：
-
-```sh
-martty harness list
-martty harness find --refresh
-martty harness remove <id> --cleanup --dry-run  # 只预览
-martty harness remove <id>                     # 确认后仅移除配置
-martty harness remove <id> --cleanup           # 同时清理独占私有安装目录
-```
-
-如果提示 `martty: command not found`，在仓库根目录执行
-`node npm/bin/martty.js harness --help`；其他命令同样将 `martty` 替换成
-`node npm/bin/martty.js`。完整步骤、临时 shell 入口、手动配置与清理边界见
-[Harness CLI 使用指南](docs/harness-cli.md)。
-
-### Registry 与 TUI 配置流程
-
-三个入口共享同一份 ACP Registry：可以直接编辑 `settings.json`，使用上述
-`martty harness` CLI，或在运行中的 TUI 输入 `/harness` 打开原生单选表单。
-`harness find` 默认读取缓存或随包的官方目录快照，`harness find --refresh` 才联网刷新
-（`https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json`），并把本地
-PATH 扫描结果作为补充；它不是 npm 包搜索，也不会在后台切换。Registry 的 `npx` / `uvx`
-分发会显示可直接配置的命令，不会添加 `--yes` 或 `--prefer-offline`。Registry 的
-`binary` 分发在选择后明确确认，并下载到 `$MARTTY_HOME/bin/<id>/<version>/<platform>`，
-校验 SHA-256 后再配置；不会写系统 PATH。TUI 中的 `/harness find` 提供同样的发现、配置、
-安装流程，`/harness <id>` 可直接切换。未收录但命名为 `*-acp` / `*_acp` 的本地程序也会被发现。
-Windows 使用 `%MARTTY_HOME%\bin\<id>\<version>\<platform>`（`windows-x86_64` 或 `windows-aarch64`），
-并通过 `PATHEXT` 识别 `npx.cmd`、`uvx.exe` 等入口。若某条目同时提供 package 与当前
-平台 binary，而本机缺少 npx/uvx，Martty 会回落到受管 binary 安装；只有 package
-分发时则说明应安装 Node.js/npm 或 uv，不会保存一个无法启动的 Harness。
-无参 `harness find` 会展示完整目录，用户不需要预先知道 Codex 或任何其他 Harness 的名字；
-只有在已经知道目标时才把后续文字作为可选过滤条件。CLI 会在每个未配置候选下直接给出
-可复制的 `martty harness add <id>` 命令。
-
-CLI `add` 只安装、保存配置，已配置项会直接复用；`use <id>` 只设置下次启动的默认项，
-不启动或认证 Agent。`martty harness remove <id>` 在终端列出清理范围并确认，默认只移除
-配置；`--cleanup` 同时清理独占的私有 binary 目录，`--dry-run` 只预览，非交互调用需显式
-`--yes`。全局程序、共享 npx/uvx 缓存、历史和凭据均保留。清理资源前请退出使用它的其他
-Martty 实例。下载进度输出到 stderr，Ctrl-C 会取消并清理临时目录，不写入半完成配置。
-TUI 选择会立即替换 standalone ACP 子进程；若当前会话
-已经发送过 prompt 或由 `/session` 恢复，则先确认，且原会话仍可从 `/session` 返回。
-
-### Harness TUI 操作
-
-在 Martty 输入 `/harness` 打开切换菜单：当前项置顶并标记 `(current)`，选择其他
-已配置项后按 Enter 走正常切换流程。需要新增时选择 **＋ Add Harness…**。
-
-![Harness 切换菜单，当前项置顶](assets/screenshots/harness-switch.png)
-
-Add 面板支持输入搜索，已安装或配置的项目与未下载项目分组展示，无需预先知道 ID。
-
-![Add Harness 的搜索与安装分组](assets/screenshots/harness-add.png)
-
-在切换列表选中已保存项按 Delete 可移除配置，并可选择清理私有安装资源；当前项不能删除。
-删除确认页按 Esc 返回删除方式，再按 Esc 返回列表并保留选择。
-登录使用 `/auth`，状态查看使用 `/status`；失败面板直接展示错误，Enter 重试。
-完整操作见 [Harness TUI 使用指南](docs/harness-tui.md)。
-
-在 `/harness` 选择 **＋ Add Harness**，或直接输入 `/harness add`，即可打开可搜索的
-目录，不必先知道命令或 Registry ID。目录优先复用经包元数据核对的本地 npm/uv 工具；
-运行器存在只表示 `Available via npx/uvx`，不代表 ACP 已连接。缺依赖时有安装指引与
-重新检测，Registry 离线仍保留本地项。npx/uvx 包准备与 binary 的下载、解压、验证
-都在面板中进行；下载中 Enter 不关闭，Esc 隐藏面板后仍在后台继续（须保持 Martty 运行）。
-完成或失败会在 composer 提示，可从 `/harness` 重新打开进度。安装完成自动保存配置，
-完成面板 Enter 走 `/harness` 的正常切换流程，Esc 只关闭；失败后 Enter 重试。
-Add / Install / Connect 本身不自动切换或认证；用户在完成面板按 Enter，或从 `/harness`
-明确选择后才切换。退出 Martty 会停止未完成的任务。
-安装输出不会直接写入终端；下载和解压有超时。切换只有在实际 `initialize` + `session/new` 成功后
-才更新 `defaultHarness`；失败保留原默认值，并提供重试入口。
-
-本地探测在后台 worker 中与 Registry 请求并行进行，面板先打开再逐步补齐结果，
-保留搜索文字与当前选择。`Installed / configured` 与 `Not downloaded` 之间有不可选中的
-分组线；“已配置”不等于包已下载。binary 下载只限制连接等待与无进展时间，不限制总时长。
-源码目录可运行 `node scripts/harness-discovery-scenario.mjs --check` 构造六种隔离探测状态，
-或用 `--tui` 打开后输入 `/harness add` 手测；不使用真实模型、不下载真实包、不改用户配置。
-
-`harness list` 会列出已保存项、包内置 DSH runtime，以及已配置命令和 `PATH` 中名称以
-`-acp` / `_acp` 结尾的可执行文件；当前项以 `*` 标记。`add` / `use` 写入
-`$MARTTY_HOME/settings.json` 的 `harnesses` 与 `defaultHarness`，并保留同文件中的主题、
-语言和 UI Plugin 设置。选择在**下一次 standalone 启动**生效，启动时依次通过 ACP
-`initialize` 与 `session/new` 连接选中的 Harness，因此欢迎页在首条消息前就能显示
-Agent 上报的模型与 effort。这只绑定空会话，不会启动模型 turn。不会把旧 Harness 的会话带到新 Harness；
-`dsh --profile martty` 的 Host runtime 仍由该 profile 所有。
-
-运行中的 standalone TUI 也可以直接添加并切换（Registry binary 会先确认安装）：
-
-```text
-/harness add local --label "Local ACP" --command local-acp --arg --stdio
-```
-
-这会保存 Harness、设为 `defaultHarness`，并立即切到新的空会话；已有会话时先确认。
-
-Standalone 启动优先级是显式 `--agent`、`DSH_TUI_AGENT`、产品内部初始化配置
-`forcedHarness`（默认为空）、持久化的 `defaultHarness`、包内置回退值。
-`forcedHarness` 不是 CLI/用户启动参数；它由产品宿主在需要时注入，存在时每次启动优先于
-用户默认。`--agent` 仍是不改保存选择的一次性覆盖。
-
-Cordis 嵌入场景可以使用 `config.agent: { command, args }` 启动 ACP server，或使用
-`config.stream` 接入调用方已有的标准管道。单次运行也可以使用 `--agent` 与重复的
-`--agent-arg` 覆盖启动命令。
-
-只实现标准 ACP 的 agent 可以正常使用会话、认证、prompt、permission、配置与
-`session/update`。支持 DSH Cordis 扩展的 agent 还可以提供动态 Plugin、Client 能力
-发现和 Package RPC。
-
-配置示例见 [Agent 接入](docs/agent-setup.md)。
-
-## 运行架构
-
-`dsh --profile martty` 启动两个进程。DSH Host 进程运行 Base Cordis tree、ACP Plugin
-和 Agent；独立的 Martty Client 进程运行 UI、Theme、Slot、Overlay 与 Session Service。
-两边通过 ACP 通信，不共享 Plugin Fiber 或 Service 对象。
-
-Rust/ratatui painter 由 Martty Client 驱动并独占用户 TTY。ACP 使用 Client 进程的
-stdin/stdout；用户 TTY 使用 fd 3/4，两条通道互不混用。
-
-架构细节与 Mermaid 源文件：
-
-| 文档 | 内容 |
-|---|---|
-| [运行架构](docs/architecture.md) | Host、Client、ACP 与 painter 的边界 |
-| [Composer 输入控件](docs/composer-input.md) | 文本输入使用说明：快捷键、鼠标、撤销/重做与开发者集成 |
-| [Agent 安装说明](docs/agent-install.md) | 面向 AI agent / 自动化：可验证的安装步骤与排查 |
-| [Plugin API](docs/plugins.md) | Service、Slot、Overlay、生命周期与 Package RPC |
-| [运行时 Mermaid](docs/diagrams/runtime-architecture.mmd) | DSH-first 双进程数据流 |
-| [Plugin Mermaid](docs/diagrams/plugin-system.mmd) | Host half、Client half 与 Plugin 视图 |
-| [ACP 连接 Mermaid](docs/diagrams/acp-connectivity.mmd) | 默认 DSH 与其他 ACP server 的连接方式 |
-| [迁移计划](docs/migration.md) | 已完成能力与后续阶段 |
-
-## 从源码构建
-
-需要 Rust stable 和 Node.js 18+：
-
-```sh
-make rust-test
-node --test scripts/package-native.test.mjs
-bash scripts/build-npm.sh
-```
-
-开发环境使用：
-
-```sh
-make tui-test
-```
-
-GitHub Actions 会构建 macOS arm64/x64、Linux arm64/x64 和 Windows x64 原生二进制，
-再将它们打包进 npm 发布物。
-
-## 项目结构
-
-| 路径 | 内容 |
-|---|---|
-| `src/` | Rust TUI、输入、绘制、ACP 状态与会话生命周期 |
-| `npm/` | Cordis Client、内置 ACP、Plugin Runner、CLI 与原生二进制入口 |
-| `scripts/` | 构建、打包、协议校验与资源生成 |
-| `assets/` | Logo、截图与界面资产 |
-| `docs/` | 架构、Plugin API、Schema、迁移与 Agent 接入文档 |
-
-<details>
-<summary><strong>从旧包名迁移</strong></summary>
-
-旧的 DeepSeek Harness TUI 包名为 `@openma/deepseek-harness-tui`，旧 profile 通常叫
-`tui`。迁移到 Martty：
-
-```sh
-dsh plugin --profile tui remove @openma/deepseek-harness-tui
-dsh plugin --profile martty add martty@latest
-```
-
-旧配置和会话数据会在首次启动时复制到 Martty 路径，不会删除原数据。
-
-</details>
+| [`docs/README.md`](docs/README.md) | index of what is left in `docs/` |
+| [`AGENTS.md`](AGENTS.md) | the real constraints — protocol negotiation, the single connection, the tokio runtime rule, the test layout |
+| [`docs/sessions.md`](docs/sessions.md) | sessions, history, message queues |
+| [`docs/composer-input.md`](docs/composer-input.md) | the input widget: every keybinding, and how it is wired |
+| [`docs/tui-palette.v0.schema.json`](docs/tui-palette.v0.schema.json) | the palette format, with `docs/fixtures/*.v0.json` as examples |
+
+The Martty-era docs — Cordis plugins, the dsh profile, the npm bundle, the Node
+migration plan, the harness CLI — have been deleted rather than left to mislead.
+They are in the git history.
 
 ## License
 
-[MIT](LICENSE)。Martty 与 DeepSeek、xAI 无关联。
+MIT — see [LICENSE](LICENSE).

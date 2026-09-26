@@ -1,14 +1,33 @@
-# TUI 文档
+# docs
 
-| 文档 | 内容 |
+What is left here, and what each file is for. Everything Martty-era — the
+Cordis plugin host, the dsh profile, the npm bundle, the Node migration plan,
+the harness CLI, the architecture diagrams — has been deleted rather than left
+to mislead. It is in the git history.
+
+| | |
 |---|---|
-| [architecture.md](architecture.md) · [EN](architecture.en.md) | 分层、TTY 所有权、控制面与绘制面 |
-| [plugins.md](plugins.md) · [EN](plugins.en.md) | 第三方插件可调用的 API；没有列出的能力宿主不提供 |
-| [migration.md](migration.md) · [EN](migration.en.md) | Client 插件能力的迁移状态 |
-| [agent-setup.md](agent-setup.md) | 面向 AI agent / 自动化脚本的安装、验证与升级步骤 |
-| [tui-palette.v0.schema.json](tui-palette.v0.schema.json) | `tuiTheme.register` protocol `0` |
-| [fixtures/demo-skin.v0.json](fixtures/demo-skin.v0.json) | 阶段 1 gallery 配色 `ember` |
-| [tui-node.v0.schema.json](tui-node.v0.schema.json) | `tuiSlots` 节点协议；右栏与 composer 上/下两个 dock 已开放 |
-| [fixtures/demo-surface.v0.json](fixtures/demo-surface.v0.json) | TuiNode gallery 快照 |
+| [`sessions.md`](sessions.md) | session tabs, history, resume, and the per-tab message queue |
+| [`composer-input.md`](composer-input.md) | the input widget: every keybinding, IME behaviour, and how it is wired to `ratatui-textarea`. Still in Chinese; it is accurate |
+| [`tui-palette.v0.schema.json`](tui-palette.v0.schema.json) | the palette format |
+| [`fixtures/`](fixtures/) | palettes that parse against that schema |
 
-实现必须服从 [plugins.md](plugins.md) 与已开放的 schema。换 compositor（Rust 或 JS）不得改插件字节。
+## fixtures/
+
+Nothing in `src/` reads this directory at runtime. The files are test fixtures,
+pulled in with `include_str!` from `tests/unit/`:
+
+- the eight shipped palettes — `ayu`, `catppuccin`, `everforest`, `iceberg`,
+  `kanagawa`, `one`, `solarized`, `tomorrow`
+- `demo-skin.v0.json` — a light/dark pair used by the theme, palette, events
+  and ui tests
+- `demo-surface.v0.json` — referenced by nothing. Kept as a schema example
+
+The `--demo-skin` flag that used to load the gallery skin is gone;
+`tests/cli_help.rs` pins its absence.
+
+## Not here
+
+The constraints that actually govern this crate are in
+[`../AGENTS.md`](../AGENTS.md), not in `docs/`. The build and test commands are
+in [`../README.md`](../README.md).

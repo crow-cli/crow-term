@@ -2,7 +2,7 @@
 name = "crow-term"
 version = "0.2.39"
 edition = "2021"
-description = "Terminal-native ACP client UI with a Cordis client plugin tree"
+description = "Terminal-native ACP client for AI coding agents"
 license = "MIT"
 
 [[bin]]

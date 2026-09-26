@@ -1,10 +1,10 @@
-# 会话、历史与消息队列
+# Sessions, history, and message queues
 
-Martty 可以在同一 ACP 连接中打开多个会话标签。标签切换保留各自的草稿、暂存图片、队列和滚动位置；恢复历史则取决于 Agent 的 ACP 能力和可用的会话记录。下面的斜杠命令都在 Martty 输入框中执行，不是系统 shell 命令。
+crow-term can open multiple session tabs within one ACP connection. Each tab keeps its own draft, staged images, queue, and scroll position. Restoring history depends on the agent's ACP capabilities and available session records. Enter the slash commands below in crow-term's composer, not in your system shell.
 
-## 新建会话与切换标签
+## Create a session and navigate tabs
 
-用 `/new` 创建会话。打开两个或更多标签后，标签栏提供切换入口，也可以用键盘命令导航：
+Use `/new` to create a session. With two or more tabs open, use the tab strip or these keyboard commands:
 
 ```text
 /session prev
@@ -12,35 +12,35 @@ Martty 可以在同一 ACP 连接中打开多个会话标签。标签切换保�
 /session view
 ```
 
-前两条切换到相邻标签，`/session view` 查看当前会话与运行信息。未发送的文字、图片和排队消息跟随所属标签；后台 shell 命令的结果仍进入发起它的会话。切换标签不会把这些内容合并进另一个对话。
+The first two commands navigate adjacent tabs; `/session view` shows the current session and runtime information. Unsent text, images, and queued messages stay with their tab. A background shell command returns its output to the session that started it, even if you navigate elsewhere.
 
-这里的标签导航不更换 Agent 程序。要从一个 Harness 换成另一个，使用 `/harness`；它走新的 ACP 连接与空会话流程，见 [Harness 安装与切换](harness-management.md)。
+Tab navigation does not replace the agent program. To change harnesses, use `/harness`, which follows a new ACP connection and empty-session flow. See `/harness` in [the slash catalogue](../src/app/slash_catalog.rs).
 
-## 恢复最近的会话
+## Resume recent sessions
 
-`/resume` 默认展示最近 50 个持久会话。用数字限制列表，或者用非纯数字的会话 ID / 前缀选择目标：
+`/resume` lists the 50 most recent durable sessions by default. Supply a number to limit the list, or a non-numeric session ID or prefix to select a target:
 
 ```text
 /resume 10
 /resume <id>
 ```
 
-把 `<id>` 替换为真实会话 ID。数字表示列表数量，不是第几个会话。Martty 优先使用可用的 ACP 会话列表，必要时回退到本地 JSONL 记录。
+Replace `<id>` with an actual session ID. A number is a list limit, not a row selection. crow-term uses the agent's session listing when available and falls back to local JSONL records when needed.
 
-当 Agent 声明支持 `session/resume` 时，可以继续长会话而不重新回放完整历史；旧 Agent 的 `session/load` 路径仍受支持。没有这些能力时，本地历史回放不应被当作远端 Agent 已恢复同一上下文。不同 Agent 的模型、权限与历史恢复能力可能不同，以其返回结果为准。
+If the agent advertises `session/resume`, long sessions can continue without replaying the entire transcript. Older agents using `session/load` remain supported. Without either capability, replaying a local transcript is not proof that the remote agent has restored the same context. Model, permission, and history-restoration support depend on the agent and its responses.
 
-## 排队消息与立即 steer
+## Queue follow-ups or steer immediately
 
-回合运行时按 Enter 提交 follow-up，消息进入当前会话的队列。要立即 steer 当前 Agent，使用 **Ctrl+Enter**；macOS 也可使用 **⌘⏎**。**Ctrl+X** 是剪切选区，不是 steer。
+During a running turn, Enter queues a follow-up for the current session. Use **Ctrl+Enter** to steer the active agent immediately; **⌘⏎** also works on macOS. **Ctrl+X** cuts a selection and is not the steer shortcut.
 
-用 **Alt+↑** 选择队列条目，再用 ↑ / ↓ 移动、Enter 编辑、Ctrl+D 删除。输入框为空且队列非空时，Enter 可立即发送队首。Esc 中断当前回合并保留 composer 草稿；它不等于关闭整个会话。
+Press **Alt+↑** to select a queue entry, use ↑ / ↓ to navigate, Enter to edit, and Ctrl+D to delete it. With an empty composer and a nonempty queue, Enter can send the first queued message immediately. Esc interrupts the current turn while preserving the composer draft; it does not close the session.
 
-## 关闭标签不会删除远端会话
+## Close a tab without deleting the remote session
 
-`/close` 关闭当前标签，并丢弃这个标签的本地草稿、暂存图片和队列。最后一个标签不能关闭，可以先 `/new` 打开另一个。
+`/close` closes the current tab and discards its local draft, staged images, and prompt queue. The last remaining tab cannot close; use `/new` to open another first.
 
-ACP 没有对应的 `session/close` 请求，所以关闭标签不代表取消远端任务或删除历史；正在运行的远端回合仍可能完成。若要先中断任务，应先使用 Esc，而不是把 `/close` 当作取消。可用的持久会话之后仍可通过 `/resume` 恢复，但不要依靠恢复找回关闭时丢弃的未发送草稿和队列。
+ACP has no corresponding `session/close` request. Closing a tab therefore does not cancel a remote task or delete durable history, and a running remote turn may still finish. Use Esc first if you intend to interrupt the task. Available durable sessions can be reopened with `/resume`, but this does not recover unsent drafts or queues discarded when the tab closed.
 
-## 查看当前状态
+## Check the active state
 
-用 `/status` 检查当前连接、会话和回合状态；用 `/keys` 查看完整快捷键。模型选项和认证方式由当前 Agent 声明，不能据某个旧标签的模型或另一 Harness 的登录方式推断当前状态。
+Use `/session view` for connection, session, and turn state, and `/keys` for the full shortcut reference. Models and authentication methods come from the active agent. Do not infer the current state from a previous tab's model or another harness's sign-in method.

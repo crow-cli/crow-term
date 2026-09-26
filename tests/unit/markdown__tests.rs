@@ -633,7 +633,7 @@ fn quoted_table_keeps_prefix_and_frame() {
 
 #[test]
 fn smoke_complex_markdown_demo() {
-    let demo = include_str!("../../complex-markdown-demo.md");
+    let demo = include_str!("../fixtures/complex-markdown-demo.md");
     for width in [24usize, 40, 80, 120] {
         let lines = render_dark(demo, width);
         assert!(!lines.is_empty(), "width {width} renders");
