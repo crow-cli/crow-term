@@ -54,6 +54,7 @@ fn decoded_and_legacy_tool_calls_use_the_same_frame_boundary() {
         call_id: "call-1".into(),
         name: "bash".into(),
         arguments: "{}".into(),
+        diff: None,
     });
     let legacy = AppEvent::Rpc {
         method: "session.event".into(),
@@ -102,6 +103,7 @@ fn fast_tool_result_waits_until_the_request_gets_an_immediate_frame() {
     });
     tx.send(AppEvent::Ui(events::UiEvent::ToolCall {
         session: "root".into(), call_id: "fast".into(), name: "bash".into(), arguments: "{}".into(),
+        diff: None,
     })).unwrap();
     tx.send(AppEvent::Ui(events::UiEvent::ToolResult {
         session: "root".into(), call_id: "fast".into(), is_error: false, text: "done".into(), error: None,

@@ -40,6 +40,7 @@ pub enum UiEvent {
         call_id: String,
         name: String,
         arguments: String,
+        diff: Option<ToolDiff>,
     },
     ToolResult {
         session: String,
@@ -298,6 +299,7 @@ fn parse_session_event(params: &Value) -> Vec<UiEvent> {
             call_id: str_field(data, "callId"),
             name: str_field(data, "name"),
             arguments: str_field(data, "arguments"),
+            diff: None,
         }],
         "tool/result" => parse_tool_result(session, data),
         "user/message" => parse_user_message(session, data),
@@ -436,12 +438,30 @@ fn parse_session_update(params: &Value) -> Vec<UiEvent> {
         "tool_call" => vec![acp_tool_call(session, update)],
         "tool_call_update" => {
             let status = first_str(update, &["status"]);
+            // A v1 agent patches the artifact (its diff block) in on a later
+            // update; the card must not wait for a title to ride it.
+            let diff = acp_tool_diff(update);
+            let named = update.get("title").is_some()
+                || update.get("kind").is_some()
+                || update.get("rawInput").is_some()
+                || update.get("raw_input").is_some();
             if status == "completed" || status == "failed" {
-                acp_tool_result(session, update).into_iter().collect()
-            } else if (status == "pending" || status == "in_progress")
-                && (update.get("rawInput").is_some()
-                    || update.get("raw_input").is_some()
-                    || update.get("title").is_some())
+                // v2 has no create: `tool_call_update` IS the upsert, and
+                // crow-cli puts a drained subtool row -- an edit's diff among
+                // them -- on the wire in ONE of them, first sight of the id
+                // and its completion together. Reading only the result half
+                // left such a cell to be born in the transcript's fallback:
+                // nameless, titled with a call id, and the diff block dropped
+                // on the floor. So the card half rides along whenever the
+                // update carries an identity -- first, because the result
+                // half is what closes the cell.
+                let mut out: Vec<UiEvent> = Vec::new();
+                if named || diff.is_some() {
+                    out.push(acp_tool_call(session.clone(), update));
+                }
+                out.extend(acp_tool_result(session, update));
+                out
+            } else if ((status == "pending" || status == "in_progress") && named) || diff.is_some()
             {
                 vec![acp_tool_call(session, update)]
             } else {
@@ -497,11 +517,69 @@ fn acp_text_content(content: Option<&Value>) -> String {
     concat_text_blocks(content)
 }
 
+/// A diff content block off a tool call: what a write/edit changed.
+///
+/// ACP v2 sends `DiffToolCallContent` -- structured `changes` (the path and
+/// the add/modify/delete operation) plus a renderable `patch` -- and v1 sent
+/// whole `oldText`/`newText`. Either is enough to draw the change; the patch
+/// is preferred because it is what the agent actually computed.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ToolDiff {
+    pub path: String,
+    /// v2 `patch.text`, a unified git patch.
+    pub patch: Option<String>,
+    /// v1 whole-file texts, when the agent sent those instead.
+    pub old_text: Option<String>,
+    pub new_text: Option<String>,
+}
+
+/// The first diff block in a tool call's `content` array, if any.
+fn acp_tool_diff(update: &Value) -> Option<ToolDiff> {
+    for block in update.get("content").and_then(Value::as_array)? {
+        if block.get("type").and_then(Value::as_str) != Some("diff") {
+            continue;
+        }
+        let path = block
+            .get("changes")
+            .and_then(Value::as_array)
+            .and_then(|c| c.iter().find_map(|ch| ch.get("path").and_then(Value::as_str)))
+            .or_else(|| block.get("path").and_then(Value::as_str))
+            .unwrap_or_default()
+            .to_string();
+        let patch = block
+            .get("patch")
+            .and_then(|p| p.get("text"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let old_text = block.get("oldText").and_then(Value::as_str).map(str::to_string);
+        let new_text = block.get("newText").and_then(Value::as_str).map(str::to_string);
+        if patch.is_some() || old_text.is_some() || new_text.is_some() {
+            return Some(ToolDiff {
+                path,
+                patch,
+                old_text,
+                new_text,
+            });
+        }
+    }
+    None
+}
+
 fn acp_tool_call(session: String, update: &Value) -> UiEvent {
+    let diff = acp_tool_diff(update);
+    // A diff card titles itself -- `📄 path (+N, -M)` -- and the wire title of
+    // a call carrying one is that same path spelled out again ("edit:
+    // /abs/path"), so the header wants the artifact's kind instead: "edit".
+    let name = if diff.is_some() {
+        first_str(update, &["kind", "toolName", "title"])
+    } else {
+        first_str(update, &["title", "kind", "toolName"])
+    };
     UiEvent::ToolCall {
         session,
         call_id: first_str(update, &["toolCallId", "tool_call_id"]),
-        name: first_str(update, &["title", "kind", "toolName"]),
+        name,
+        diff,
         arguments: update
             .get("rawInput")
             .or_else(|| update.get("raw_input"))

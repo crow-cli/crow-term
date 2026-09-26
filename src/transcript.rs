@@ -15,7 +15,7 @@ use ratatui::text::{Line, Span};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use crate::events::UiEvent;
+use crate::events::{ToolDiff, UiEvent};
 use crate::locale::Locale;
 use crate::markdown::ToneMode;
 use crate::theme::Theme;
@@ -83,6 +83,10 @@ pub enum CellKind {
         ok: Option<bool>,
         error: Option<String>,
         agent: Option<String>,
+        /// A write/edit call's own artifact: the diff block off its content.
+        /// When present it *is* the body — the card replaces both the raw
+        /// input preview and the plain-text result tail.
+        diff: Option<ToolDiff>,
     },
     Shell {
         command: String,
@@ -288,8 +292,39 @@ fn build_body(
             BodyBuild::plain(crate::markdown::render(text, theme, tone, width), 0)
         }
         CellKind::Tool {
-            request, result, ok, error, ..
+            request,
+            result,
+            ok,
+            error,
+            diff,
+            ..
         } => {
+            // A write/edit call carries its own artifact, and the card *is*
+            // the result: textual-diff-view's chrome (`📄 path (+N, -M)`,
+            // dashed rule, `⋮` between hunks) painted full-bleed, since it
+            // brings its own backgrounds and gutters. The raw-input preview
+            // and the plain-text result tail would say the same thing twice,
+            // so a card drops both; a failure still rides below it. Collapsed
+            // is the card's own title row, which is the whole change in one
+            // line -- the file and its counts.
+            if let Some(d) = diff {
+                let card = crate::diff::view::Diff::from_tool_diff(d);
+                let full = card.lines(width);
+                let total = full.len();
+                let mut lines = if expanded {
+                    full
+                } else {
+                    card.title_lines(width)
+                };
+                if let Some(err) = error {
+                    lines.extend(error_rows(err, width, theme));
+                }
+                return BodyBuild {
+                    lines,
+                    meta: total,
+                    has_command: false,
+                };
+            }
             let body = result.trim_end();
             let all: Vec<String> = if body.is_empty() {
                 Vec::new()
@@ -347,12 +382,7 @@ fn build_body(
                 ));
             }
             if let Some(err) = error {
-                for l in wrap(err, width.saturating_sub(2)) {
-                    lines.push(Line::from(vec![
-                        Span::styled("│ ".to_string(), Style::default().fg(theme.err)),
-                        Span::styled(l, Style::default().fg(theme.err)),
-                    ]));
-                }
+                lines.extend(error_rows(err, width, theme));
             }
             if !body.is_empty() {
                 let bar_color = match ok {
@@ -451,6 +481,20 @@ fn build_body(
         }
         _ => BodyBuild::plain(Vec::new(), 0),
     }
+}
+
+/// A tool failure's message, wrapped behind the red gutter the rest of the
+/// cell's body uses.
+fn error_rows(err: &str, width: usize, theme: &Theme) -> Vec<Line<'static>> {
+    wrap(err, width.saturating_sub(2))
+        .into_iter()
+        .map(|l| {
+            Line::from(vec![
+                Span::styled("│ ".to_string(), Style::default().fg(theme.err)),
+                Span::styled(l, Style::default().fg(theme.err)),
+            ])
+        })
+        .collect()
 }
 
 /// One image the UI should render as a kitty-graphics thumbnail, positioned
@@ -1040,6 +1084,7 @@ impl Transcript {
                 call_id,
                 name,
                 arguments,
+                diff,
             } => {
                 self.close_open(&session);
                 let title = tool_title(&name, &arguments);
@@ -1049,12 +1094,19 @@ impl Transcript {
                             name: current_name,
                             title: current_title,
                             request,
+                            diff: current_diff,
                             ..
                         } = &mut cell.kind
                         {
                             *current_name = name;
                             *current_title = title;
                             *request = arguments;
+                            // An upsert patches: the update carrying the
+                            // artifact fills the card in, and one that does
+                            // not carry it leaves the card already there alone.
+                            if diff.is_some() {
+                                *current_diff = diff;
+                            }
                         }
                         cell.bump();
                     }
@@ -1072,6 +1124,7 @@ impl Transcript {
                     ok: None,
                     error: None,
                     agent,
+                    diff,
                 }));
                 self.tools.insert(call_id, self.cells.len() - 1);
             }
@@ -1116,6 +1169,7 @@ impl Transcript {
                             ok: Some(!is_error),
                             error,
                             agent,
+                            diff: None,
                         }));
                     }
                 }
@@ -1709,6 +1763,7 @@ impl Transcript {
                     title,
                     ok,
                     agent,
+                    diff,
                     ..
                 } => {
                     let render = cell.render.as_ref().expect("body cache");
@@ -1734,8 +1789,13 @@ impl Transcript {
                         ));
                     }
                     // An open cell frames the command below the header, so the
-                    // one-line title would only say the same thing twice.
-                    let titled = !title.is_empty() && !(expanded && render.has_command);
+                    // one-line title would only say the same thing twice. A
+                    // diff card repeats it in both states: its own title row
+                    // carries the path and the counts, and the wire title for
+                    // such a call is that same path again.
+                    let titled = !title.is_empty()
+                        && !(expanded && render.has_command)
+                        && diff.is_none();
                     if titled {
                         let prefix_w: usize = spans.iter().map(|s| s.content.width()).sum();
                         let chevron_w = if has_more { 2 } else { 0 };

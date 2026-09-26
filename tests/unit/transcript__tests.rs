@@ -12,6 +12,7 @@ fn cancel_open_work_stops_running_tools() {
         call_id: "c1".into(),
         name: "bash".into(),
         arguments: "{}".into(),
+        diff: None,
     });
     tr.cancel_open_work();
     match &tr.cells[0].kind {
@@ -108,6 +109,7 @@ fn tool_call_pairs_with_result() {
         call_id: "c1".into(),
         name: "bash".into(),
         arguments: r#"{"command":"ls"}"#.into(),
+        diff: None,
     });
     tr.apply(UiEvent::ToolResult {
         session: "s".into(),
@@ -136,12 +138,14 @@ fn streamed_tool_request_updates_one_existing_cell() {
         call_id: "c1".into(),
         name: "Subagent".into(),
         arguments: r#"{"arguments":"{\"task\":"}"#.into(),
+        diff: None,
     });
     tr.apply(UiEvent::ToolCall {
         session: "s".into(),
         call_id: "c1".into(),
         name: "Subagent: inspect renderer".into(),
         arguments: r#"{"task":"inspect renderer"}"#.into(),
+        diff: None,
     });
 
     assert_eq!(
@@ -169,6 +173,7 @@ fn turn_end_settles_an_orphaned_tool_in_the_client_presentation() {
         call_id: "c1".into(),
         name: "Subagent".into(),
         arguments: "{}".into(),
+        diff: None,
     });
     tr.apply(UiEvent::TurnEnd {
         session: "s".into(),
@@ -340,6 +345,7 @@ fn write_tool_tab_indented_body_fits_terminal_width() {
         call_id: "c1".into(),
         name: "str_replace_editor".into(),
         arguments: r#"{"command":"create","path":"src/lib.rs"}"#.into(),
+        diff: None,
     });
     tr.apply(UiEvent::ToolResult {
         session: "s".into(),
@@ -511,6 +517,7 @@ fn tool_output_is_open_by_default_and_collapse_all_takes_it_back() {
         call_id: "c1".into(),
         name: "bash".into(),
         arguments: "{}".into(),
+        diff: None,
     });
     tr.apply(UiEvent::ToolResult {
         session: "s".into(),
@@ -542,6 +549,72 @@ fn tool_output_is_open_by_default_and_collapse_all_takes_it_back() {
     assert!(
         p.contains("last 4/8 lines"),
         "footer describes the fixed tail preview: {p}"
+    );
+}
+
+/// A write/edit call's diff block is its own artifact: the card replaces both
+/// the raw-input preview and the plain-text result tail (they would say the
+/// same thing twice), and collapsed it is the card's own title row -- the file
+/// and its counts, the whole change in one line.
+#[test]
+fn a_diff_card_replaces_the_request_preview_and_collapses_to_its_title() {
+    let mut tr = t("s");
+    tr.apply(UiEvent::ToolCall {
+        session: "s".into(),
+        call_id: "c1".into(),
+        name: "edit".into(),
+        arguments: r#"{"file_path":"/tmp/x.py","old_string":"a","new_string":"b"}"#.into(),
+        diff: Some(ToolDiff {
+            path: "/tmp/x.py".into(),
+            patch: Some("--- a/tmp/x.py\n+++ b/tmp/x.py\n@@ -1 +1 @@\n-a\n+b\n".into()),
+            old_text: None,
+            new_text: None,
+        }),
+    });
+    tr.apply(UiEvent::ToolResult {
+        session: "s".into(),
+        call_id: "c1".into(),
+        is_error: false,
+        text: String::new(),
+        error: None,
+    });
+    let theme = Theme::dark();
+    let plain = |lines: &[Line]| -> String {
+        lines
+            .iter()
+            .map(|l| {
+                l.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    let open = plain(&tr.lines(&theme, crate::markdown::ToneMode::Single, 60, ' '));
+    println!("--- open ---\n{open}");
+    assert!(
+        open.contains("📄 /tmp/x.py (+1, -1)"),
+        "the card titles itself: {open}"
+    );
+    assert!(
+        !open.contains("old_string"),
+        "the raw input is the card's job now: {open}"
+    );
+
+    tr.collapse_all = true;
+    let closed = plain(&tr.lines(&theme, crate::markdown::ToneMode::Single, 60, ' '));
+    println!("--- closed ---\n{closed}");
+    assert!(
+        closed.contains("📄 /tmp/x.py (+1, -1)"),
+        "collapsed keeps the title: {closed}"
+    );
+    assert!(
+        closed.lines().count() < open.lines().count(),
+        "and drops the body: {} vs {}",
+        closed.lines().count(),
+        open.lines().count()
     );
 }
 
@@ -646,6 +719,7 @@ fn stats_accumulate_turns_steps_and_ttft() {
         call_id: "c1".into(),
         name: "bash".into(),
         arguments: "{}".into(),
+        diff: None,
     });
     tr.apply(UiEvent::ToolResult {
         session: "s".into(),
@@ -733,6 +807,7 @@ fn tool_call(tr: &mut Transcript, name: &str, arguments: &str) {
         call_id: "c1".into(),
         name: name.into(),
         arguments: arguments.into(),
+        diff: None,
     });
 }
 
@@ -866,6 +941,7 @@ fn fixture() -> Transcript {
         call_id: "c1".into(),
         name: "bash".into(),
         arguments: r#"{"command":"cargo test --locked"}"#.into(),
+        diff: None,
     });
     tr.apply(UiEvent::ToolResult {
         session: "s".into(),
@@ -879,6 +955,7 @@ fn fixture() -> Transcript {
         call_id: "c2".into(),
         name: "read".into(),
         arguments: r#"{"path":"src/app.rs"}"#.into(),
+        diff: None,
     });
     tr.apply(UiEvent::ToolResult {
         session: "s".into(),
@@ -1076,6 +1153,7 @@ fn fill_past_high_mark(tr: &mut Transcript, width: u16) -> usize {
                 call_id: format!("c{i}"),
                 name: "bash".into(),
                 arguments: format!(r#"{{"command":"turn {i}"}}"#),
+                diff: None,
             });
             tr.apply(UiEvent::ToolResult {
                 session: "s".into(),
@@ -1163,6 +1241,7 @@ fn prune_never_removes_an_unsettled_cell() {
         call_id: "stuck".into(),
         name: "bash".into(),
         arguments: "{}".into(),
+        diff: None,
     });
     let gen = tr.gen();
     fill_past_high_mark(&mut tr, width);
@@ -1183,6 +1262,7 @@ fn prune_never_removes_an_unsettled_cell() {
                     call_id: "live".into(),
                     name: "bash".into(),
                     arguments: r#"{"command":"still running"}"#.into(),
+                    diff: None,
                 });
                 *tr.tools.get("live").expect("open tool indexed")
             }
@@ -1228,6 +1308,7 @@ fn prune_rebases_the_indexes_that_point_into_the_tail() {
         call_id: "live".into(),
         name: "bash".into(),
         arguments: r#"{"command":"still running"}"#.into(),
+        diff: None,
     });
     let live_before = *tr.tools.get("live").expect("open tool indexed");
 

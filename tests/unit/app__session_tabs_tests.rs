@@ -199,6 +199,7 @@ fn cancel_requested_only_closes_work_in_the_named_session() {
         call_id: "old".into(),
         name: "old-tool".into(),
         arguments: "{}".into(),
+        diff: None,
     });
     app.open_new_session("s-two".into(), true);
     app.state = RunState::Running;
@@ -207,6 +208,7 @@ fn cancel_requested_only_closes_work_in_the_named_session() {
         call_id: "live".into(),
         name: "live-tool".into(),
         arguments: "{}".into(),
+        diff: None,
     });
 
     app.handle(

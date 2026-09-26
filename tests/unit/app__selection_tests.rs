@@ -155,6 +155,7 @@ fn tool_click_toggles_output_expansion() {
         call_id: "c1".into(),
         name: "bash".into(),
         arguments: "{}".into(),
+        diff: None,
     });
     app.transcript.apply(crate::events::UiEvent::ToolResult {
         session: "dsh-test".into(),
@@ -189,6 +190,7 @@ fn ctrl_o_is_the_transcript_wide_collapse_override() {
             call_id: "c1".into(),
             name: "bash".into(),
             arguments: "{}".into(),
+            diff: None,
         });
 
     assert!(!app.transcript.collapse_all, "cells start open");
@@ -213,6 +215,7 @@ fn wheel_over_collapsed_tool_scrolls_the_transcript() {
         call_id: "c1".into(),
         name: "bash".into(),
         arguments: "{}".into(),
+        diff: None,
     });
     app.transcript.apply(crate::events::UiEvent::ToolResult {
         session: "dsh-test".into(),
@@ -240,6 +243,7 @@ fn tool_click_in_a_child_view_targets_the_child_transcript() {
         call_id: "c1".into(),
         name: "bash".into(),
         arguments: "{}".into(),
+        diff: None,
     });
     app.subagents.push(SubagentView {
         id: "child-1".into(),

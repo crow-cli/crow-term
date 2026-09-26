@@ -1842,6 +1842,7 @@ fn cancel_requested_stops_in_flight_tools() {
         call_id: "c1".into(),
         name: "bash".into(),
         arguments: r#"{"command":"grep"}"#.into(),
+        diff: None,
     });
     app.handle(
         AppEvent::Ctl(CtlEvent::CancelRequested {

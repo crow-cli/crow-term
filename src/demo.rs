@@ -35,6 +35,7 @@ impl Driver {
         let want_sub = lower.contains("sub");
         let want_inject = lower.contains("inject");
         let want_long = lower.contains("long");
+        let want_diff = lower.contains("diff") || lower.contains("edit");
 
         // 1. session running.
         self.status("running");
@@ -202,6 +203,41 @@ impl Driver {
             }
         }));
 
+        // 'diff' variation: an edit's diff card, in the exact wire shape
+        // crow-cli's v2 subtool drain sends -- ONE `tool_call_update` that is
+        // the call's first appearance, its artifact and its completion at
+        // once, which is the shape the transcript's card path exists for.
+        if want_diff {
+            self.rpc(
+                "session/update",
+                json!({
+                    "sessionId": self.session,
+                    "update": {
+                        "sessionUpdate": "tool_call_update",
+                        "toolCallId": "demo-call-3",
+                        "title": "edit: src/transcript.rs",
+                        "kind": "edit",
+                        "status": "completed",
+                        "rawInput": {
+                            "file_path": "src/transcript.rs",
+                            "old_string": "use crate::theme::Theme;",
+                            "new_string": "use crate::diff::view::Diff;\nuse crate::theme::Theme;"
+                        },
+                        "locations": [{"path": "/work/crow-term/src/transcript.rs"}],
+                        "content": [{
+                            "type": "diff",
+                            "changes": [{
+                                "path": "/work/crow-term/src/transcript.rs",
+                                "fileType": "text",
+                                "operation": "modify"
+                            }],
+                            "patch": {"format": "git_patch", "text": diff_patch()}
+                        }]
+                    }
+                }),
+            );
+        }
+
         // 'sub' variation: a short child-session exchange after the second pair.
         if want_sub {
             let child = format!("{}-child", self.session);
@@ -316,6 +352,38 @@ fn split_pieces(text: &str) -> Vec<String> {
     let chars: Vec<char> = text.chars().collect();
     let step = (chars.len() / 6).max(24);
     chars.chunks(step).map(|c| c.iter().collect()).collect()
+}
+
+/// A two-hunk unified patch for the 'diff' variation: an insert, a replace
+/// whose long line has to fold, and enough context that the `⋮` between the
+/// hunks stands for real omitted lines.
+fn diff_patch() -> String {
+    r#"--- a/src/transcript.rs
++++ b/src/transcript.rs
+@@ -18,6 +18,7 @@
+ use crate::events::UiEvent;
+ use crate::locale::Locale;
+ use crate::markdown::ToneMode;
++use crate::diff::view::Diff;
+ use crate::theme::Theme;
+
+ /// Collapsed tool preview height; click toggles full expansion.
+@@ -290,9 +291,12 @@
+         CellKind::Tool { request, result, ok, error, .. } => {
+-            let body = result.trim_end();
++            // A write/edit call carries its own artifact: the card is the
++            // result, so a request preview would say the same thing twice.
++            let body = result.trim_end();
+             let all: Vec<String> = if body.is_empty() {
+                 Vec::new()
+             } else {
+-                body.lines().flat_map(|raw| wrap(raw, width.saturating_sub(2))).collect()
++                body.lines()
++                    .flat_map(|raw| wrap(raw, width.saturating_sub(2)))
++                    .collect()
+             };
+"#
+    .to_string()
 }
 
 /// ~30-line answer with a rust fenced code block, for wrapping/collapsing tests.

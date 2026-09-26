@@ -74,6 +74,7 @@ fn standard_acp_nonterminal_tool_updates_refresh_the_existing_request() {
             call_id: "call-1".into(),
             name: "Subagent: inspect renderer".into(),
             arguments: r#"{"task":"inspect renderer"}"#.into(),
+            diff: None,
         }]
     );
 }
@@ -105,6 +106,7 @@ fn a_tool_call_that_rides_content_instead_of_raw_input_is_still_readable() {
             call_id: "turn/call_1".into(),
             name: "execute".into(),
             arguments: fence.into(),
+            diff: None,
         }]
     );
 
@@ -156,6 +158,7 @@ fn raw_input_wins_over_content_and_a_null_one_is_no_answer() {
         call_id: "c".into(),
         name: "fs".into(),
         arguments: r#"{"mode":"read"}"#.into(),
+        diff: None,
     });
 
     // An explicit null is an absent field, not the string "null".
@@ -177,6 +180,7 @@ fn raw_input_wins_over_content_and_a_null_one_is_no_answer() {
         call_id: "c".into(),
         name: "fs".into(),
         arguments: String::new(),
+        diff: None,
     });
 }
 
@@ -415,6 +419,7 @@ fn tool_call_fields_and_defaults() {
             call_id: "c1".into(),
             name: "bash".into(),
             arguments: "{\"command\":\"ls\"}".into(),
+            diff: None,
         }]
     );
 
@@ -429,6 +434,7 @@ fn tool_call_fields_and_defaults() {
             call_id: String::new(),
             name: String::new(),
             arguments: String::new(),
+            diff: None,
         }]
     );
 }
@@ -1221,6 +1227,7 @@ fn a_v2_tool_call_arrives_as_its_own_first_update() {
             call_id: call_id.into(),
             name: "execute".into(),
             arguments: r#"{"code":"print(\"ok\")"}"#.into(),
+            diff: None,
         }],
         "no preceding tool_call: the in_progress patch opens the cell"
     );
@@ -1258,6 +1265,93 @@ fn a_v2_tool_call_arrives_as_its_own_first_update() {
 
 fn v2_update(session: &str, update: serde_json::Value) -> Vec<UiEvent> {
     parse_notification("session/update", &json!({ "sessionId": session, "update": update }))
+}
+
+/// crow-cli's v2 subtool drain puts a drained row on the wire in ONE upsert:
+/// first sight of the id, its diff artifact and its completion together. The
+/// card half has to ride with the result half, and first, or the cell is born
+/// in the transcript's nameless fallback and the diff is dropped on the floor.
+#[test]
+fn a_v2_diff_upsert_opens_the_card_and_completes_it() {
+    let patch = "--- a/tmp/x.py\n+++ b/tmp/x.py\n@@ -1 +1 @@\n-a\n+b\n";
+    let updates = v2_update(
+        "s1",
+        json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "turn-1/call_sub7",
+            "title": "edit: /tmp/x.py",
+            "kind": "edit",
+            "status": "completed",
+            "rawInput": { "file_path": "/tmp/x.py", "old_string": "a", "new_string": "b" },
+            "locations": [{ "path": "/tmp/x.py" }],
+            "content": [{
+                "type": "diff",
+                "changes": [{ "path": "/tmp/x.py", "fileType": "text", "operation": "modify" }],
+                "patch": { "format": "git_patch", "text": patch },
+            }],
+        }),
+    );
+    assert_eq!(
+        updates.len(),
+        2,
+        "one upsert, two events: {updates:?}"
+    );
+    match &updates[0] {
+        UiEvent::ToolCall {
+            call_id,
+            name,
+            arguments,
+            diff,
+            ..
+        } => {
+            assert_eq!(call_id, "turn-1/call_sub7");
+            assert_eq!(
+                name, "edit",
+                "the card titles itself with the path, so the header wants the kind"
+            );
+            assert!(
+                arguments.contains("old_string"),
+                "the raw input still rides along: {arguments}"
+            );
+            let d = diff.as_ref().expect("the diff block is the artifact");
+            assert_eq!(
+                d.path, "/tmp/x.py",
+                "changes[].path is the real path, not the header's a/ b/"
+            );
+            assert_eq!(d.patch.as_deref(), Some(patch));
+        }
+        other => panic!("expected the card half, got {other:?}"),
+    }
+    assert!(
+        matches!(&updates[1], UiEvent::ToolResult { call_id, is_error: false, .. }
+            if call_id == "turn-1/call_sub7"),
+        "and the result half closes it: {:?}",
+        updates[1]
+    );
+}
+
+/// v1 sent no patch: both whole texts, and the client did the diffing. It
+/// patched the artifact in on an `in_progress` update, before the completion.
+#[test]
+fn a_v1_diff_block_carries_both_whole_texts() {
+    let updates = v2_update(
+        "s1",
+        json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "call_1",
+            "status": "in_progress",
+            "content": [{ "type": "diff", "path": "/tmp/x.py", "oldText": "a\n", "newText": "b\n" }],
+        }),
+    );
+    match updates.as_slice() {
+        [UiEvent::ToolCall { diff: Some(d), .. }] => {
+            assert_eq!(d.path, "/tmp/x.py");
+            assert_eq!(d.patch, None, "v1 computed nothing for us");
+            assert_eq!(d.old_text.as_deref(), Some("a\n"));
+            assert_eq!(d.new_text.as_deref(), Some("b\n"));
+        }
+        other => panic!("expected one card patch, got {other:?}"),
+    }
 }
 
 /// `usage_update` is the only token signal crow-cli's v2 agent sends mid-turn,

@@ -1343,6 +1343,7 @@ fn hidden_tool_arguments_replace_thinking_with_the_working_placeholder() {
         call_id: "call-1".into(),
         name: "subagent".into(),
         arguments: r#"{"description":"task"}"#.into(),
+        diff: None,
     });
     let frame = dump_frame(&mut app, 100, 24);
     assert!(
@@ -3843,6 +3844,7 @@ fn draw_prunes_scrollback_past_the_high_mark_and_keeps_the_tail() {
                 call_id: format!("c{i}"),
                 name: "bash".into(),
                 arguments: format!(r#"{{"command":"turn {i}"}}"#),
+                diff: None,
             });
             app.transcript.apply(UiEvent::ToolResult {
                 session: "dsh-test".into(),

@@ -76,6 +76,7 @@ fn fill_scrollback(app: &mut App, width: u16) -> usize {
                 call_id: format!("c{i}"),
                 name: "bash".into(),
                 arguments: format!(r#"{{"command":"turn {i}"}}"#),
+                diff: None,
             });
             app.transcript.apply(UiEvent::ToolResult {
                 session: "s1".into(),

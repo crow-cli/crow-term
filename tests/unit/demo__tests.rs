@@ -53,3 +53,36 @@ fn error_prompt_ends_turn_with_error() {
         .expect("turn/end emitted");
     assert_eq!(end["event"]["data"]["reason"]["kind"], "error");
 }
+
+/// The 'diff' variation emits crow-cli's v2 subtool shape: ONE upsert that is
+/// the call's first appearance, its artifact and its completion together, and
+/// the parser has to read it as a card AND a result -- in that order, since
+/// the result is what closes the cell.
+#[test]
+fn diff_prompt_emits_one_v2_upsert_that_parses_to_a_card_and_a_result() {
+    let events = collect("show me the diff");
+    let (_, params) = events
+        .iter()
+        .find(|(m, p)| {
+            m == "session/update" && p["update"]["sessionUpdate"] == "tool_call_update"
+        })
+        .expect("a v2 tool_call_update");
+    let block = &params["update"]["content"][0];
+    assert_eq!(block["type"], "diff");
+    assert_eq!(block["patch"]["format"], "git_patch");
+    assert_eq!(
+        block["changes"][0]["path"], "/work/crow-term/src/transcript.rs",
+        "changes[].path is the real path, not the patch header's a/ b/"
+    );
+    let parsed = crate::events::parse_notification("session/update", params);
+    assert!(
+        matches!(
+            &parsed[..],
+            [
+                crate::events::UiEvent::ToolCall { diff: Some(_), .. },
+                crate::events::UiEvent::ToolResult { is_error: false, .. }
+            ]
+        ),
+        "got {parsed:?}"
+    );
+}

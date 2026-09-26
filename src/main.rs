@@ -12,6 +12,7 @@ mod controller;
 mod cordis;
 mod deepseek_logo;
 mod demo;
+mod diff;
 mod elicitation;
 mod events;
 mod file_ref;
